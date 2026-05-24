@@ -46,6 +46,9 @@ npm run dev
 - API Docs: http://localhost:8000/docs
 - Admin panel: http://localhost:3000/admin
 
+## Known Bugs Fixed
+- **Pydantic v2 field/type name collision**: In `schemas/transaction.py`, the field `date: Optional[date]` caused Pydantic v2 to resolve the annotation as `NoneType` because the field name `date` shadowed the imported `datetime.date` type. Fixed by `from datetime import date as DateType` and using `DateType` in annotations. Any future schema field whose name matches its type import needs the same alias treatment.
+
 ## Important Notes
 - Next.js 16 with React 19 and Tailwind CSS v4 (CSS-based config, not tailwind.config.ts)
 - shadcn/ui init failed due to network (ECONNRESET), components written manually in src/components/ui/
