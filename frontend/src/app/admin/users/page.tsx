@@ -4,7 +4,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { adminApi } from "@/lib/api";
 import { toFa } from "@/lib/fmt";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +42,11 @@ export default function AdminUsersPage() {
     }
   }, [page, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, [load]);
 
   async function toggleBlock(user: User) {
     setActionLoading(user.id);

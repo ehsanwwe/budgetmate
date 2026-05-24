@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -8,10 +8,10 @@ import api from "@/lib/api";
 import { toman, toFa } from "@/lib/fmt";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MoneyInput } from "@/components/money-input";
 import { Wallet, Loader2 } from "lucide-react";
 
 const budgetSchema = z.object({
@@ -28,7 +28,7 @@ export default function BudgetPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<BudgetForm>({
+  const { control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<BudgetForm>({
     resolver: zodResolver(budgetSchema),
   });
 
@@ -137,7 +137,18 @@ export default function BudgetPage() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>مبلغ بودجه (تومان)</Label>
-                <Input {...register("amount", { valueAsNumber: true })} type="number" placeholder="مثال: ۵۰۰۰۰۰۰" />
+                <Controller
+                  name="amount"
+                  control={control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="مثال: ۵,۰۰۰,۰۰۰"
+                      error={!!errors.amount}
+                    />
+                  )}
+                />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
               </div>
               <Button type="submit" className="w-full" disabled={isSubmitting}>

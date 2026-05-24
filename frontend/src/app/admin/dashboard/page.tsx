@@ -5,7 +5,7 @@ import { adminApi } from "@/lib/api";
 import { toFa } from "@/lib/fmt";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, ArrowLeftRight, Target, Wallet, Activity } from "lucide-react";
+import { Users, ArrowLeftRight, Target, Activity } from "lucide-react";
 
 interface Stats {
   total_users: number;

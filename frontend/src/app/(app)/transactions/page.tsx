@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MoneyInput } from "@/components/money-input";
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
 
 const txSchema = z.object({
@@ -46,7 +47,7 @@ export default function TransactionsPage() {
   const [filterCat, setFilterCat] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<TxForm>({
+  const { control, register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<TxForm>({
     resolver: zodResolver(txSchema),
     defaultValues: { date: new Date().toISOString().split("T")[0] },
   });
@@ -56,7 +57,7 @@ export default function TransactionsPage() {
       const params = new URLSearchParams();
       if (filterType) params.append("type", filterType);
       if (filterCat) params.append("category_id", filterCat);
-      if (search) params.append("search", search);
+      if (search) params.append("q", search);
       const [txRes, catRes] = await Promise.all([
         api.get(`/transactions?${params}`),
         api.get("/categories"),
@@ -70,7 +71,11 @@ export default function TransactionsPage() {
     }
   }, [filterType, filterCat, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, [load]);
 
   async function onSubmit(data: TxForm) {
     try {
@@ -132,7 +137,18 @@ export default function TransactionsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>مبلغ (تومان)</Label>
-                <Input {...register("amount", { valueAsNumber: true })} type="number" placeholder="مثال: ۵۰۰۰۰۰" />
+                <Controller
+                  name="amount"
+                  control={control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="مثال: ۵۰۰,۰۰۰"
+                      error={!!errors.amount}
+                    />
+                  )}
+                />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
               </div>
               <div className="space-y-1.5">

@@ -38,7 +38,8 @@ export default function ChatPage() {
     async function loadHistory() {
       try {
         const res = await api.get("/chat/history");
-        const hist: Message[] = res.data.map((m: { role: string; content: string }) => ({
+        const rows = res.data.messages || [];
+        const hist: Message[] = rows.slice().reverse().map((m: { role: string; content: string }) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
@@ -64,7 +65,7 @@ export default function ChatPage() {
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-      const res = await fetch(`${apiBase}/chat/stream?message=${encodeURIComponent(userMsg)}&token=${token}`, {
+      const res = await fetch(`${apiBase}/chat/stream?content=${encodeURIComponent(userMsg)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -87,7 +88,7 @@ export default function ChatPage() {
             if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
-              const text = parsed.text || parsed.content || parsed.delta || data;
+              const text = parsed.chunk || parsed.text || parsed.content || parsed.delta || data;
               accumulated += text;
               setStreamingText(accumulated);
             } catch {
@@ -104,8 +105,8 @@ export default function ChatPage() {
     } catch {
       // Fallback: use regular message endpoint
       try {
-        const res = await api.post("/chat/message", { message: userMsg });
-        setMessages((prev) => [...prev, { role: "assistant", content: res.data.response || res.data.content || "پاسخی دریافت نشد" }]);
+        const res = await api.post("/chat/message", { content: userMsg });
+        setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || "پاسخی دریافت نشد" }]);
       } catch {
         toast.error("خطا در ارسال پیام");
         setMessages((prev) => [...prev, { role: "assistant", content: "متأسفم، در حال حاضر مشکلی پیش آمده. لطفاً دوباره تلاش کنید." }]);

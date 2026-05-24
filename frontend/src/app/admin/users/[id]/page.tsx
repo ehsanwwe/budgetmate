@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { adminApi } from "@/lib/api";
-import { toman, jDate, toFa } from "@/lib/fmt";
+import { toman, jDate } from "@/lib/fmt";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

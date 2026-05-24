@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MoneyInput } from "@/components/money-input";
 import { Plus, Target, PlusCircle, Loader2 } from "lucide-react";
 
 const goalSchema = z.object({
@@ -55,7 +56,11 @@ export default function GoalsPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, []);
 
   async function onCreateGoal(data: GoalForm) {
     try {
@@ -100,7 +105,18 @@ export default function GoalsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>مبلغ هدف (تومان)</Label>
-                <Input {...goalForm.register("target_amount", { valueAsNumber: true })} type="number" placeholder="مثال: ۳۰۰۰۰۰۰۰" />
+                <Controller
+                  name="target_amount"
+                  control={goalForm.control}
+                  render={({ field }) => (
+                    <MoneyInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="مثال: ۳۰,۰۰۰,۰۰۰"
+                      error={!!goalForm.formState.errors.target_amount}
+                    />
+                  )}
+                />
                 {goalForm.formState.errors.target_amount && <p className="text-xs text-destructive">{goalForm.formState.errors.target_amount.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -123,7 +139,18 @@ export default function GoalsPage() {
           <form onSubmit={contributeForm.handleSubmit(onContribute)} className="space-y-4 mt-2">
             <div className="space-y-1.5">
               <Label>مبلغ (تومان)</Label>
-              <Input {...contributeForm.register("amount", { valueAsNumber: true })} type="number" placeholder="مقدار پس‌انداز" />
+              <Controller
+                name="amount"
+                control={contributeForm.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="مقدار پس‌انداز"
+                    error={!!contributeForm.formState.errors.amount}
+                  />
+                )}
+              />
               {contributeForm.formState.errors.amount && <p className="text-xs text-destructive">{contributeForm.formState.errors.amount.message}</p>}
             </div>
             <Button type="submit" className="w-full" disabled={contributeForm.formState.isSubmitting}>
