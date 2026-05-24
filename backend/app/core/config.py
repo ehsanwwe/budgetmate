@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     DATABASE_URL: str = f"sqlite:///{(BACKEND_DIR / 'budgetmate.db').as_posix()}"
     CORS_ORIGINS: str = "http://localhost:3000"
+    STARTER_FREE_TOKENS: int = 20000
 
     @field_validator("DATABASE_URL")
     @classmethod
