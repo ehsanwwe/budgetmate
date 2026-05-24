@@ -83,16 +83,24 @@ export default function NavBar() {
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — fixed 5 items including Profile and billing */}
       <nav className="md:hidden fixed bottom-0 start-0 end-0 bg-white border-t border-border flex justify-around py-2 z-40">
-        {navItems.slice(0, 5).map(({ href, label, icon: Icon }) => (
+        {[
+          { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
+          { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
+          { href: "/chat", label: "دستیار", icon: MessageCircle },
+          { href: "/billing/tokens", label: "توکن", icon: Coins },
+          { href: "/profile", label: "پروفایل", icon: User },
+        ].map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             aria-label={label}
             className={cn(
               "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors",
-              pathname === href ? "text-primary" : "text-muted-foreground"
+              pathname === href || (href !== "/" && pathname.startsWith(href))
+                ? "text-primary"
+                : "text-muted-foreground"
             )}
           >
             <Icon className="h-5 w-5" />

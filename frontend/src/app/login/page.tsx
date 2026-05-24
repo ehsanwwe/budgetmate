@@ -14,18 +14,21 @@ type Step = "phone" | "otp" | "profile";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setToken, setUser, token } = useAuthStore();
+  const { setToken, setUser, setNeedsProfile, token, needsProfile } = useAuthStore();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [firstNameError, setFirstNameError] = useState("");
+  const [lastNameError, setLastNameError] = useState("");
   const [loading, setLoading] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Only redirect when token exists AND profile is complete
   useEffect(() => {
-    if (token) router.replace("/dashboard");
-  }, [token, router]);
+    if (token && !needsProfile) router.replace("/dashboard");
+  }, [token, needsProfile, router]);
 
   async function handleRequestOtp(e: React.FormEvent) {
     e.preventDefault();
@@ -56,13 +59,18 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/auth/verify-otp", { phone, code });
+      // Set token first so PATCH /users/me is authenticated
       setToken(res.data.access_token);
       setUser(res.data.user);
       if (res.data.needs_profile) {
+        // Mark as needing profile — the redirect useEffect will NOT fire
+        // because it checks `token && !needsProfile`
+        setNeedsProfile(true);
         setStep("profile");
       } else {
+        setNeedsProfile(false);
         toast.success("ورود موفق");
-        router.replace("/dashboard");
+        // useEffect will fire and redirect
       }
     } catch {
       toast.error("کد نادرست است");
@@ -71,21 +79,36 @@ export default function LoginPage() {
     }
   }
 
+  function validateProfile(): boolean {
+    let valid = true;
+    if (!firstName.trim()) {
+      setFirstNameError("نام الزامی است");
+      valid = false;
+    } else {
+      setFirstNameError("");
+    }
+    if (!lastName.trim()) {
+      setLastNameError("نام خانوادگی الزامی است");
+      valid = false;
+    } else {
+      setLastNameError("");
+    }
+    return valid;
+  }
+
   async function handleCompleteProfile(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim()) {
-      toast.error("نام الزامی است");
-      return;
-    }
+    if (!validateProfile()) return;
     setLoading(true);
     try {
       const res = await api.patch("/users/me", {
         first_name: firstName.trim(),
-        last_name: lastName.trim() || undefined,
+        last_name: lastName.trim(),
       });
       setUser(res.data);
+      setNeedsProfile(false);
       toast.success("خوش آمدید!");
-      router.replace("/dashboard");
+      // useEffect will now see token && !needsProfile and redirect
     } catch {
       toast.error("خطا در ذخیره اطلاعات");
     } finally {
@@ -109,6 +132,8 @@ export default function LoginPage() {
     }
   }
 
+  const profileSubmitDisabled = loading || !firstName.trim() || !lastName.trim();
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-emerald-50 p-4">
       <div className="w-full max-w-md space-y-4">
@@ -130,7 +155,7 @@ export default function LoginPage() {
             <CardDescription>
               {step === "phone" && "شماره موبایل خود را وارد کنید"}
               {step === "otp" && `کد ارسال شده به ${phone} را وارد کنید`}
-              {step === "profile" && "برای تکمیل ثبت‌نام نام خود را وارد کنید"}
+              {step === "profile" && "برای تکمیل ثبت‌نام نام و نام خانوادگی خود را وارد کنید"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -191,20 +216,38 @@ export default function LoginPage() {
                   <Label>نام *</Label>
                   <Input
                     value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => {
+                      setFirstName(e.target.value);
+                      if (e.target.value.trim()) setFirstNameError("");
+                    }}
                     placeholder="نام"
                     autoFocus
+                    className={firstNameError ? "border-destructive" : ""}
                   />
+                  {firstNameError && (
+                    <p className="text-xs text-destructive">{firstNameError}</p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>نام خانوادگی</Label>
+                  <Label>نام خانوادگی *</Label>
                   <Input
                     value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="نام خانوادگی (اختیاری)"
+                    onChange={(e) => {
+                      setLastName(e.target.value);
+                      if (e.target.value.trim()) setLastNameError("");
+                    }}
+                    placeholder="نام خانوادگی"
+                    className={lastNameError ? "border-destructive" : ""}
                   />
+                  {lastNameError && (
+                    <p className="text-xs text-destructive">{lastNameError}</p>
+                  )}
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={profileSubmitDisabled}
+                >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   شروع کنید
                 </Button>

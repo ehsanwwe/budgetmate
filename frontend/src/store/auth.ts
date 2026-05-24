@@ -15,9 +15,11 @@ interface AuthState {
   token: string | null;
   user: User | null;
   adminToken: string | null;
+  needsProfile: boolean;
   setToken: (token: string) => void;
   setUser: (user: User) => void;
   setAdminToken: (token: string) => void;
+  setNeedsProfile: (v: boolean) => void;
   logout: () => void;
 }
 
@@ -27,10 +29,12 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       adminToken: null,
+      needsProfile: false,
       setToken: (token) => set({ token }),
       setUser: (user) => set({ user }),
       setAdminToken: (adminToken) => set({ adminToken }),
-      logout: () => set({ token: null, user: null }),
+      setNeedsProfile: (needsProfile) => set({ needsProfile }),
+      logout: () => set({ token: null, user: null, needsProfile: false }),
     }),
     { name: "auth-storage" }
   )
