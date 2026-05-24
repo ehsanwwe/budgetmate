@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import List
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from app.models.chat import MessageRole
 
 
 class ChatMessageIn(BaseModel):
-    content: str
+    content: str = Field(validation_alias=AliasChoices("content", "message"))
 
 
 class ChatMessageOut(BaseModel):

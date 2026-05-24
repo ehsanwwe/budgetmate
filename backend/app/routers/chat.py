@@ -1,68 +1,22 @@
 from datetime import datetime
-from typing import AsyncIterator
-from fastapi import APIRouter, Depends, Query, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.core.auth import get_current_user
-from app.core.jalali import current_jalali_month
 from app.models.user import User
-from app.models.budget import Budget
-from app.models.category import Category
-from app.models.transaction import Transaction, TransactionType
-from app.models.goal import Goal
 from app.models.chat import ChatMessage, MessageRole
 from app.schemas.chat import ChatMessageIn, ChatReply, ChatHistoryResponse, ChatMessageOut
-from app.services.ai import get_ai_reply, stream_ai_reply
+from app.services.finance_agent import handle_finance_message
 import json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def _build_user_context(user: User, db: Session) -> dict:
-    jm, jy = current_jalali_month()
-    from datetime import date
-    today = date.today()
-    start = date(today.year, today.month, 1)
-
-    budget = db.query(Budget).filter(
-        Budget.user_id == user.id, Budget.month == jm, Budget.year == jy
-    ).first()
-
-    spent = db.query(func.sum(Transaction.amount)).filter(
-        Transaction.user_id == user.id,
-        Transaction.type == TransactionType.expense,
-        Transaction.date >= start,
-    ).scalar() or 0
-
-    # Top 3 categories
-    from sqlalchemy import desc
-    cat_rows = db.query(
-        Transaction.category_id,
-        func.sum(Transaction.amount).label("total"),
-    ).filter(
-        Transaction.user_id == user.id,
-        Transaction.type == TransactionType.expense,
-        Transaction.date >= start,
-    ).group_by(Transaction.category_id).order_by(desc("total")).limit(3).all()
-
-    top_cats = []
-    for row in cat_rows:
-        cat = db.query(Category).filter(Category.id == row.category_id).first()
-        top_cats.append({"name": cat.name if cat else "سایر", "amount": row.total})
-
-    goals = db.query(Goal).filter(Goal.user_id == user.id).limit(5).all()
-    goal_data = [{"title": g.title, "current": g.current_amount, "target": g.target_amount} for g in goals]
-
-    budget_amount = budget.amount if budget else 0
-    return {
-        "budget": budget_amount,
-        "spent": spent,
-        "remaining": budget_amount - spent,
-        "top_categories": top_cats,
-        "goals": goal_data,
-    }
+def _save_message(db: Session, user_id: int, role: MessageRole, content: str) -> None:
+    db.add(ChatMessage(user_id=user_id, role=role, content=content, created_at=datetime.utcnow()))
+    db.commit()
 
 
 @router.post("/message", response_model=ChatReply)
@@ -71,57 +25,30 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Save user message
-    user_msg = ChatMessage(
-        user_id=current_user.id,
-        role=MessageRole.user,
-        content=body.content,
-        created_at=datetime.utcnow(),
-    )
-    db.add(user_msg)
-    db.commit()
-
-    context = _build_user_context(current_user, db)
-    reply = await get_ai_reply(body.content, context)
-
-    # Save assistant reply
-    assistant_msg = ChatMessage(
-        user_id=current_user.id,
-        role=MessageRole.assistant,
-        content=reply,
-        created_at=datetime.utcnow(),
-    )
-    db.add(assistant_msg)
-    db.commit()
-
+    _save_message(db, current_user.id, MessageRole.user, body.content)
+    reply = await handle_finance_message(body.content, current_user, db)
+    _save_message(db, current_user.id, MessageRole.assistant, reply)
     return ChatReply(reply=reply)
 
 
 @router.get("/stream")
 async def stream_message(
-    content: str = Query(...),
+    content: Optional[str] = Query(None),
+    message: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    context = _build_user_context(current_user, db)
+    user_content = content or message
+    if not user_content:
+        raise HTTPException(status_code=400, detail="متن پیام الزامی است")
 
     async def event_generator():
-        full_reply = []
-        async for chunk in stream_ai_reply(content, context):
-            full_reply.append(chunk)
-            yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+        reply = await handle_finance_message(user_content, current_user, db)
+        for word in reply.split(" "):
+            yield f"data: {json.dumps({'chunk': word + ' '}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
-
-        # Save messages after streaming
-        user_msg = ChatMessage(user_id=current_user.id, role=MessageRole.user, content=content)
-        assistant_msg = ChatMessage(
-            user_id=current_user.id,
-            role=MessageRole.assistant,
-            content="".join(full_reply),
-        )
-        db.add(user_msg)
-        db.add(assistant_msg)
-        db.commit()
+        _save_message(db, current_user.id, MessageRole.user, user_content)
+        _save_message(db, current_user.id, MessageRole.assistant, reply)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

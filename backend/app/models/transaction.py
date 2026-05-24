@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from sqlalchemy import BigInteger, Column, Date, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
 import enum
 from app.db import Base
 
@@ -20,3 +21,17 @@ class Transaction(Base):
     description = Column(String, nullable=True)
     date = Column(Date, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    category = relationship("Category")
+
+    @property
+    def category_name(self):
+        return self.category.name if self.category else None
+
+    @property
+    def category_icon(self):
+        return self.category.icon if self.category else None
+
+    @property
+    def category_color(self):
+        return self.category.color if self.category else None

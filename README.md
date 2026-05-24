@@ -179,8 +179,8 @@ Create `backend/.env`:
 OPENCLAW_URL=http://your-openclaw-host:port
 OPENCLAW_TOKEN=your_token_here
 AI_PROVIDER=openclaw
-PRIMARY_MODEL=ollama/qwen3-coder:30b
-FALLBACK_MODELS=ollama/gemma3:12b,ollama/qwen3:14b,openai/gpt-4o-mini
+PRIMARY_MODEL=ollama/gemma4:26b
+FALLBACK_MODELS=ollama/qwen3-coder:30b,ollama/qwen3-coder:latest,ollama/gemma3:12b,ollama/qwen3:14b,openai/gpt-4o-mini
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_admin_password
 OTP_MOCK_CODE=123456
@@ -189,6 +189,8 @@ JWT_ALGORITHM=HS256
 DATABASE_URL=sqlite:///./budgetmate.db
 CORS_ORIGINS=http://localhost:3000
 ```
+
+Development SQLite note: `backend/budgetmate.db` is the canonical local database. Relative SQLite URLs are normalized by the backend config relative to `backend/`, so starting FastAPI or Alembic from the repo root or from `backend/` uses the same DB file. A root-level `budgetmate.db` may exist from older relative-path runs and should not be deleted unless you explicitly decide to clean it up.
 
 Run migrations and start the server:
 
@@ -256,14 +258,14 @@ Make sure Ollama is running:
 
 ```bash
 ollama serve
-ollama pull qwen3-coder:30b
+ollama pull gemma4:26b
 ```
 
 Then:
 
 ```env
 AI_PROVIDER=ollama
-PRIMARY_MODEL=qwen3-coder:30b
+PRIMARY_MODEL=gemma4:26b
 ```
 
 ### Option 3: Anthropic Claude

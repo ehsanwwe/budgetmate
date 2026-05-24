@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, Optional
 import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MESSAGE = "در حال حاضر دستیار هوشمند در دسترس نیست. لطفاً بعداً تلاش کنید."
+FALLBACK_MESSAGE = "در حال حاضر دستیار هوشمند در دسترس نیست. لطفا بعدا تلاش کنید."
 
 OPENCLAW_PATHS = [
     "/v1/chat/completions",
@@ -17,33 +17,47 @@ OPENCLAW_PATHS = [
 
 def _build_system_prompt(context: Optional[dict] = None) -> str:
     base = (
-        "تو یک دستیار مالی شخصی به نام «بادجت‌میت» هستی. "
-        "همیشه به فارسی، صمیمی، کوتاه و کاربردی پاسخ بده. "
-        "اعداد را با جداکننده هزارگان نمایش بده و واحد را «تومان» بگذار. "
-        "هیچ‌گاه به انگلیسی پاسخ نده."
+        "تو دستیار مالی شخصی BudgetMate هستی. همیشه فارسی، کوتاه، دقیق و کاربردی پاسخ بده. "
+        "فقط بر اساس داده‌های واقعی موجود در زمینه مالی کاربر عدد بده و هرگز عدد نساز. "
+        "مبلغ‌ها را با جداکننده هزارگان و واحد تومان نمایش بده."
     )
     if not context:
         return base
 
-    parts = [base, "\n\nاطلاعات مالی کاربر:"]
-    if context.get("budget"):
-        parts.append(f"- بودجه ماه جاری: {context['budget']:,} تومان")
-    if context.get("spent") is not None:
-        parts.append(f"- مجموع هزینه‌های این ماه: {context['spent']:,} تومان")
-    if context.get("remaining") is not None:
-        parts.append(f"- مانده بودجه: {context['remaining']:,} تومان")
-    if context.get("top_categories"):
-        parts.append("- ۳ دسته‌بندی پرهزینه:")
-        for cat in context["top_categories"]:
+    budget = context.get("budget", {})
+    spent = context.get("total_spent_this_month", context.get("spent", 0))
+    income = context.get("total_income_this_month", 0)
+    remaining = context.get("remaining_budget", context.get("remaining", 0))
+    budget_amount = budget.get("amount") if isinstance(budget, dict) else budget
+
+    parts = [base, "\nاطلاعات مالی واقعی کاربر:"]
+    parts.append(f"- تاریخ امروز: {context.get('current_gregorian_date')}")
+    parts.append(f"- ماه/سال جلالی: {context.get('current_jalali_month')}/{context.get('current_jalali_year')}")
+    parts.append(f"- بودجه ماه جاری: {int(budget_amount or 0):,} تومان")
+    parts.append(f"- هزینه این ماه: {int(spent or 0):,} تومان")
+    parts.append(f"- درآمد این ماه: {int(income or 0):,} تومان")
+    parts.append(f"- مانده بودجه: {int(remaining or 0):,} تومان")
+    parts.append(f"- درصد مصرف بودجه: {context.get('budget_used_percent', 0)}٪")
+
+    if context.get("top_expense_categories"):
+        parts.append("- دسته‌های پرهزینه:")
+        for cat in context["top_expense_categories"]:
             parts.append(f"  * {cat['name']}: {cat['amount']:,} تومان")
-    if context.get("goals"):
-        parts.append("- اهداف مالی فعال:")
-        for goal in context["goals"]:
-            parts.append(f"  * {goal['title']}: {goal['current']:,} از {goal['target']:,} تومان")
+
+    if context.get("active_goals"):
+        parts.append("- اهداف فعال:")
+        for goal in context["active_goals"]:
+            parts.append(f"  * {goal['title']}: مانده {goal['remaining_amount']:,} از {goal['target_amount']:,} تومان")
+
+    if context.get("recent_transactions"):
+        parts.append("- آخرین تراکنش‌ها:")
+        for tx in context["recent_transactions"][:5]:
+            parts.append(f"  * {tx['date']} - {tx['type']} - {tx['amount']:,} - {tx.get('description') or ''}")
+
     return "\n".join(parts)
 
 
-async def _try_openclaw(messages: list, model: str, stream: bool = False) -> Optional[str]:
+async def _try_openclaw(messages: list, model: str) -> Optional[str]:
     headers = {
         "Authorization": f"Bearer {settings.OPENCLAW_TOKEN}",
         "Content-Type": "application/json",
@@ -58,13 +72,12 @@ async def _try_openclaw(messages: list, model: str, stream: bool = False) -> Opt
                 if resp.status_code == 200:
                     data = resp.json()
                     return data["choices"][0]["message"]["content"]
-                elif resp.status_code == 404:
+                if resp.status_code == 404:
                     continue
-                else:
-                    logger.warning(f"OpenClaw {path} returned {resp.status_code}: {resp.text[:500]}")
-                    return None
-            except Exception as e:
-                logger.warning(f"OpenClaw {path} error: {e}")
+                logger.warning("OpenClaw %s returned %s: %s", path, resp.status_code, resp.text[:500])
+                return None
+            except Exception as exc:
+                logger.warning("OpenClaw %s error: %s", path, exc)
                 continue
     return None
 
@@ -77,25 +90,23 @@ async def _try_ollama(messages: list, model: str) -> Optional[str]:
             resp = await client.post(url, json=body)
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.warning(f"Ollama error: {e}")
+            logger.warning("Ollama returned %s: %s", resp.status_code, resp.text[:500])
+    except Exception as exc:
+        logger.warning("Ollama error: %s", exc)
     return None
 
 
 async def get_ai_reply(user_message: str, context: Optional[dict] = None) -> str:
-    system_prompt = _build_system_prompt(context)
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": _build_system_prompt(context)},
         {"role": "user", "content": user_message},
     ]
 
-    all_models = [settings.PRIMARY_MODEL] + settings.fallback_models_list
-
-    for model in all_models:
+    for model in [settings.PRIMARY_MODEL] + settings.fallback_models_list:
         try:
             provider = settings.AI_PROVIDER
             if "/" in model:
-                prefix = model.split("/")[0]
+                prefix = model.split("/", 1)[0]
                 if prefix == "ollama":
                     provider = "ollama"
                 elif prefix == "openai":
@@ -107,25 +118,18 @@ async def get_ai_reply(user_message: str, context: Optional[dict] = None) -> str
             if provider == "openclaw":
                 reply = await _try_openclaw(messages, model)
             elif provider == "ollama":
-                ollama_model = model.split("/", 1)[-1] if "/" in model else model
-                reply = await _try_ollama(messages, ollama_model)
+                reply = await _try_ollama(messages, model.split("/", 1)[-1])
 
             if reply:
                 return reply
-        except Exception as e:
-            logger.error(f"Model {model} failed: {e}")
-            continue
+        except Exception as exc:
+            logger.error("Model %s failed: %s", model, exc)
 
     return FALLBACK_MESSAGE
 
 
 async def stream_ai_reply(user_message: str, context: Optional[dict] = None) -> AsyncIterator[str]:
     reply = await get_ai_reply(user_message, context)
-    # Stream word by word for SSE effect
-    words = reply.split(" ")
-    for i, word in enumerate(words):
-        if i == 0:
-            yield word
-        else:
-            yield " " + word
+    for i, word in enumerate(reply.split(" ")):
+        yield word if i == 0 else " " + word
         await asyncio.sleep(0.05)
