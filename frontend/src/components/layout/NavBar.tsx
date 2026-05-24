@@ -10,6 +10,8 @@ import {
   MessageCircle,
   User,
   Wallet,
+  Coins,
+  Zap,
 } from "lucide-react";
 
 const navItems = [
@@ -21,9 +23,17 @@ const navItems = [
   { href: "/profile", label: "پروفایل", icon: User },
 ];
 
+const billingItems = [
+  { href: "/billing/tokens", label: "خرید توکن", icon: Coins },
+  { href: "/billing/subscription", label: "خرید اشتراک", icon: Zap },
+];
+
 export default function NavBar() {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const displayName = user?.first_name
+    ? [user.first_name, user.last_name].filter(Boolean).join(" ")
+    : user?.name || user?.phone || "کاربر";
 
   return (
     <>
@@ -35,7 +45,7 @@ export default function NavBar() {
           </div>
           <div>
             <p className="font-bold text-sm">بادجت‌میت</p>
-            <p className="text-xs text-muted-foreground">{user?.name || user?.phone || "کاربر"}</p>
+            <p className="text-xs text-muted-foreground">{displayName}</p>
           </div>
         </div>
         {navItems.map(({ href, label, icon: Icon }) => (
@@ -53,6 +63,24 @@ export default function NavBar() {
             {label}
           </Link>
         ))}
+        <div className="mt-2 pt-2 border-t border-border space-y-0.5">
+          <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">کیف پول</p>
+          {billingItems.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                pathname === href
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </Link>
+          ))}
+        </div>
       </aside>
 
       {/* Mobile bottom nav */}

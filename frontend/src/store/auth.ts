@@ -2,10 +2,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-interface User {
+export interface User {
   id: number;
   phone: string;
   name?: string;
+  first_name?: string;
+  last_name?: string;
   is_blocked: boolean;
 }
 

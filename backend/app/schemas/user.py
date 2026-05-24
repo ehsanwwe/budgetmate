@@ -7,6 +7,8 @@ class UserOut(BaseModel):
     id: int
     phone: str
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     is_blocked: bool
     language: str
     created_at: datetime
@@ -16,3 +18,5 @@ class UserOut(BaseModel):
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None

@@ -10,6 +10,7 @@ from app.models.admin import AdminUser
 from app.models.activity import ActivityLog
 from app.schemas.auth import OTPRequest, OTPVerify, TokenResponse, AdminLogin, AdminTokenResponse
 from app.schemas.user import UserOut
+from app.services.billing import ensure_wallet
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,7 +33,8 @@ def verify_otp(body: OTPVerify, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="کد تأیید اشتباه است")
 
     user = db.query(User).filter(User.phone == body.phone).first()
-    if not user:
+    is_new_user = user is None
+    if is_new_user:
         user = User(phone=body.phone, created_at=datetime.utcnow())
         db.add(user)
         db.commit()
@@ -45,8 +47,15 @@ def verify_otp(body: OTPVerify, db: Session = Depends(get_db)):
         db.add(log)
         db.commit()
 
+    ensure_wallet(db, user.id)
+
+    needs_profile = not user.first_name
     token = create_access_token({"sub": str(user.id), "scope": "user"})
-    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
+    return TokenResponse(
+        access_token=token,
+        user=UserOut.model_validate(user),
+        needs_profile=needs_profile,
+    )
 
 
 @router.post("/admin/login", response_model=AdminTokenResponse)

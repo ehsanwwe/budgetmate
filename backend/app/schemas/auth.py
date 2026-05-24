@@ -15,6 +15,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+    needs_profile: bool = False
 
 
 class AdminLogin(BaseModel):

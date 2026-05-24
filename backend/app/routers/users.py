@@ -21,6 +21,10 @@ def update_me(
 ):
     if body.name is not None:
         current_user.name = body.name
+    if body.first_name is not None:
+        current_user.first_name = body.first_name
+    if body.last_name is not None:
+        current_user.last_name = body.last_name
     db.commit()
     db.refresh(current_user)
     return current_user

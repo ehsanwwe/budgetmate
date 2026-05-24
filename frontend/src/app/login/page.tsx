@@ -7,14 +7,19 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Wallet, Loader2 } from "lucide-react";
+
+type Step = "phone" | "otp" | "profile";
 
 export default function LoginPage() {
   const router = useRouter();
   const { setToken, setUser, token } = useAuthStore();
-  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -53,10 +58,36 @@ export default function LoginPage() {
       const res = await api.post("/auth/verify-otp", { phone, code });
       setToken(res.data.access_token);
       setUser(res.data.user);
-      toast.success("ورود موفق");
-      router.replace("/dashboard");
+      if (res.data.needs_profile) {
+        setStep("profile");
+      } else {
+        toast.success("ورود موفق");
+        router.replace("/dashboard");
+      }
     } catch {
       toast.error("کد نادرست است");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCompleteProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!firstName.trim()) {
+      toast.error("نام الزامی است");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api.patch("/users/me", {
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || undefined,
+      });
+      setUser(res.data);
+      toast.success("خوش آمدید!");
+      router.replace("/dashboard");
+    } catch {
+      toast.error("خطا در ذخیره اطلاعات");
     } finally {
       setLoading(false);
     }
@@ -92,16 +123,18 @@ export default function LoginPage() {
         <Card className="shadow-xl border-0 bg-white/90 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">
-              {step === "phone" ? "شماره موبایل" : "کد تایید"}
+              {step === "phone" && "شماره موبایل"}
+              {step === "otp" && "کد تایید"}
+              {step === "profile" && "تکمیل پروفایل"}
             </CardTitle>
             <CardDescription>
-              {step === "phone"
-                ? "شماره موبایل خود را وارد کنید"
-                : `کد ارسال شده به ${phone} را وارد کنید`}
+              {step === "phone" && "شماره موبایل خود را وارد کنید"}
+              {step === "otp" && `کد ارسال شده به ${phone} را وارد کنید`}
+              {step === "profile" && "برای تکمیل ثبت‌نام نام خود را وارد کنید"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {step === "phone" ? (
+            {step === "phone" && (
               <form onSubmit={handleRequestOtp} className="space-y-4">
                 <Input
                   type="tel"
@@ -118,7 +151,9 @@ export default function LoginPage() {
                   دریافت کد
                 </Button>
               </form>
-            ) : (
+            )}
+
+            {step === "otp" && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="flex justify-center gap-2 flex-row-reverse">
                   {otp.map((digit, i) => (
@@ -150,10 +185,38 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
-              <span className="font-semibold">کد آزمایشی: </span>
-              <span dir="ltr">۱۲۳۴۵۶</span>
-            </div>
+            {step === "profile" && (
+              <form onSubmit={handleCompleteProfile} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>نام *</Label>
+                  <Input
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="نام"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>نام خانوادگی</Label>
+                  <Input
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="نام خانوادگی (اختیاری)"
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  شروع کنید
+                </Button>
+              </form>
+            )}
+
+            {step !== "profile" && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
+                <span className="font-semibold">کد آزمایشی: </span>
+                <span dir="ltr">۱۲۳۴۵۶</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
