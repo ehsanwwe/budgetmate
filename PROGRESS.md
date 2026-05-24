@@ -42,44 +42,51 @@
 - Model waterfall: PRIMARY_MODEL → FALLBACK_MODELS
 - Persian fallback message if all providers fail
 
-**Smoke Tests Results** ✅
+### Frontend (100% complete, builds clean, dev server returns 200)
+
+**Stack**: Next.js 16.2.6 + React 19 + TypeScript + Tailwind CSS v4
+
+**Pages**
+- `/login` — OTP flow (phone → 6-digit code boxes), test hint card
+- `/dashboard` — 4 stat cards, Recharts pie + line charts, recent transactions
+- `/transactions` — Filterable table, add dialog with form validation
+- `/budget` — Current month budget with progress bar
+- `/goals` — Goal cards with progress, create/contribute dialogs
+- `/chat` — SSE streaming chat with AI advisor, typing indicator
+- `/profile` — Edit name, logout
+- `/blocked` — Full-screen blocked message
+- `/admin` — Admin login
+- `/admin/dashboard` — 5 stat cards, recent activity
+- `/admin/users` — Paginated searchable table, block/unblock actions
+- `/admin/users/[id]` — User detail: profile + transactions + activity
+
+**Libraries**
+- Vazirmatn font, Persian digits toFa(), toman() currency format
+- Jalali dates via dayjs+jalaliday
+- Zustand persisted auth store
+- shadcn/ui components (hand-written due to network issue in init)
+- axios with request/response interceptors for auth
+
+## Smoke Tests ✅
 - GET /api/v1/health → `{"status":"ok"}`
 - POST /auth/request-otp → Persian message + hint
 - POST /auth/verify-otp → JWT token + user object
 - GET /users/me → user data
-- POST /budgets → budget created
-- POST /transactions → transaction created
-- GET /transactions/summary → spending stats
-- POST /auth/admin/login → admin JWT
-- GET /admin/stats → platform stats
+- Frontend at http://localhost:3000 → 200 OK
 
 ## What's Left ❌
 
-### Frontend (not started)
-- Next.js 14 app with Persian RTL layout
-- Pages: Login (OTP), Dashboard, Transactions, Goals, Chat, Admin panel
-- Tailwind CSS with RTL support
-- Shamsi calendar date pickers
-- AI chat UI with SSE streaming
+### Docker & Deployment
+- [ ] `docker-compose.yml` — backend + frontend containers
+- [ ] Nginx reverse proxy config
+- [ ] Production environment setup
 
-## Exact Next Steps to Resume
+### Polish
+- [ ] Jalali date picker component for transaction/goal forms
+- [ ] Error boundaries
+- [ ] PWA manifest + icons
+- [ ] Better loading skeletons
 
-1. **Start backend** (if not running):
-   ```powershell
-   cd D:\ai_agent\budgetmate\backend
-   python -m uvicorn app.main:app --reload --port 8000
-   ```
-
-2. **Build frontend** — Next instruction to Claude:
-   > Build the frontend for BudgetMate in `frontend/` using Next.js 14 + Tailwind CSS. RTL Persian layout. Pages: login (OTP flow), dashboard (budget overview, spending chart), transactions list + add form, goals page, AI chat with SSE, admin panel. Connect to backend at http://localhost:8000/api/v1. Auth via JWT in localStorage.
-
-3. **Key backend URLs**:
-   - Health: `http://localhost:8000/api/v1/health`
-   - API docs: `http://localhost:8000/docs`
-   - Admin login: username=`admin`, password=`5tgb%TGB`
-   - OTP test code: `123456`
-
-4. **Notes**:
-   - passlib is incompatible with Python 3.13; using `bcrypt` directly
-   - AI service uses OpenClaw at `http://188.136.214.220:18789`
-   - If OpenClaw unreachable, set `AI_PROVIDER=ollama` in `.env`
+### Documentation
+- [ ] README.md with setup instructions
+- [ ] API documentation improvements
