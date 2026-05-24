@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date as DateType
 from typing import List, Optional
 from pydantic import BaseModel
 from app.models.transaction import TransactionType
@@ -9,7 +9,7 @@ class TransactionCreate(BaseModel):
     amount: int
     type: TransactionType = TransactionType.expense
     description: Optional[str] = None
-    date: Optional[date] = None
+    date: Optional[DateType] = None
 
 
 class TransactionOut(BaseModel):
@@ -19,7 +19,7 @@ class TransactionOut(BaseModel):
     amount: int
     type: TransactionType
     description: Optional[str] = None
-    date: date
+    date: DateType
 
     model_config = {"from_attributes": True}
 
