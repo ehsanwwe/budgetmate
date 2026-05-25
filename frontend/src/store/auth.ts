@@ -9,6 +9,7 @@ export interface User {
   first_name?: string;
   last_name?: string;
   family_name?: string;
+  birthdate?: string;
   province?: string;
   city?: string;
   income_range?: string;

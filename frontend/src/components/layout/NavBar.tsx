@@ -10,8 +10,6 @@ import {
   MessageCircle,
   User,
   Wallet,
-  Coins,
-  Zap,
 } from "lucide-react";
 
 const navItems = [
@@ -23,10 +21,20 @@ const navItems = [
   { href: "/profile", label: "پروفایل", icon: User },
 ];
 
-const billingItems = [
-  { href: "/billing/tokens", label: "خرید توکن", icon: Coins },
-  { href: "/billing/subscription", label: "خرید اشتراک", icon: Zap },
+const mobileNavItems = [
+  { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
+  { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
+  { href: "/budget", label: "بودجه", icon: Wallet },
+  { href: "/chat", label: "دستیار", icon: MessageCircle },
+  { href: "/profile", label: "پروفایل", icon: User },
 ];
+
+function isNavItemActive(pathname: string, href: string) {
+  if (href === "/profile") {
+    return pathname === "/profile" || pathname.startsWith("/billing");
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -54,7 +62,7 @@ export default function NavBar() {
             href={href}
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-              pathname === href
+              isNavItemActive(pathname, href)
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
@@ -63,42 +71,18 @@ export default function NavBar() {
             {label}
           </Link>
         ))}
-        <div className="mt-2 pt-2 border-t border-border space-y-0.5">
-          <p className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">کیف پول</p>
-          {billingItems.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                pathname === href
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              {label}
-            </Link>
-          ))}
-        </div>
       </aside>
 
-      {/* Mobile bottom nav — fixed 5 items including Profile and billing */}
+      {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 start-0 end-0 bg-white border-t border-border flex justify-around py-2 z-40">
-        {[
-          { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
-          { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
-          { href: "/chat", label: "دستیار", icon: MessageCircle },
-          { href: "/billing/tokens", label: "توکن", icon: Coins },
-          { href: "/profile", label: "پروفایل", icon: User },
-        ].map(({ href, label, icon: Icon }) => (
+        {mobileNavItems.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             aria-label={label}
             className={cn(
               "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors",
-              pathname === href || (href !== "/" && pathname.startsWith(href))
+              isNavItemActive(pathname, href)
                 ? "text-primary"
                 : "text-muted-foreground"
             )}
