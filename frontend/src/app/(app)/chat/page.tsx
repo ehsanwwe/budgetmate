@@ -346,7 +346,7 @@ export default function ChatPage() {
 
   // Normal chat layout (messages exist, or voice mode active)
   return (
-    <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)]  -mx-4 md:-mx-6 " dir="rtl">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)] " dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-2.5">
