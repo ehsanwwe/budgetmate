@@ -47,7 +47,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+logger.info("CORS origins: %s", settings.cors_origins_list)
 
 PREFIX = "/api/v1"
 
