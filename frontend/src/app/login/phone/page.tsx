@@ -11,15 +11,17 @@ export default function LoginPhonePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const isValid = /^09\d{9}$/.test(phone);
+  // User types 10 digits without leading 0 (e.g. 9120000001); we prepend "0" for the backend
+  const isValid = /^9\d{9}$/.test(phone);
 
   async function handleContinue() {
     if (!isValid) return;
     setLoading(true);
     setError("");
+    const fullPhone = "0" + phone;
     try {
-      await api.post("/auth/request-otp", { phone });
-      router.push(`/login/otp?phone=${encodeURIComponent(phone)}`);
+      await api.post("/auth/request-otp", { phone: fullPhone });
+      router.push(`/login/otp?phone=${encodeURIComponent(fullPhone)}`);
     } catch {
       setError("خطا در ارسال کد. دوباره تلاش کنید");
     } finally {
@@ -28,8 +30,8 @@ export default function LoginPhonePage() {
   }
 
   function handleInput(val: string) {
-    // Accept only digits, strip non-numeric
-    const digits = val.replace(/\D/g, "").slice(0, 11);
+    // Strip non-digits; cap at 10 (user types without leading 0)
+    const digits = val.replace(/\D/g, "").slice(0, 10);
     setPhone(digits);
     if (error) setError("");
   }
@@ -73,12 +75,15 @@ export default function LoginPhonePage() {
           transition={{ delay: 0.2, duration: 0.3 }}
           className="pt-4"
         >
-          {/* Phone input with prefix */}
-          <div className={`flex items-center rounded-2xl bg-white shadow-sm border-2 overflow-hidden transition-colors ${
-            error ? "border-red-400" : isValid ? "border-emerald-400" : "border-transparent focus-within:border-[#2d1812]/30"
-          }`}>
-            <div className="flex items-center justify-center px-4 py-4 bg-[#2d1812]/5 border-l border-[#2d1812]/10 shrink-0">
-              <span className="text-base font-semibold text-[#2d1812] font-mono" dir="ltr">98+</span>
+          {/* Phone input with prefix — dir="ltr" so +98 stays on the left */}
+          <div
+            dir="ltr"
+            className={`flex items-center rounded-2xl bg-white shadow-sm border-2 overflow-hidden transition-colors ${
+              error ? "border-red-400" : isValid ? "border-emerald-400" : "border-transparent focus-within:border-[#2d1812]/30"
+            }`}
+          >
+            <div className="flex items-center justify-center px-4 py-4 bg-[#2d1812]/5 border-r border-[#2d1812]/10 shrink-0">
+              <span className="text-base font-semibold text-[#2d1812] font-mono">+98</span>
             </div>
             <input
               type="tel"
@@ -86,16 +91,16 @@ export default function LoginPhonePage() {
               value={phone}
               onChange={(e) => handleInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && isValid && handleContinue()}
-              placeholder="۰۹۱۲ ۳۴۵ ۶۷۸۹"
-              className="flex-1 px-4 py-4 bg-transparent text-xl font-mono text-[#2d1812] placeholder:text-gray-300 focus:outline-none"
+              placeholder="912 345 6789"
+              className="flex-1 px-4 py-4 bg-transparent text-xl font-mono tabular-nums text-[#2d1812] placeholder:text-gray-300 focus:outline-none"
               dir="ltr"
               autoFocus
-              maxLength={11}
+              maxLength={10}
             />
           </div>
-          {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+          {error && <p className="mt-2 text-sm text-red-500 text-right">{error}</p>}
           {!isValid && phone.length > 0 && !error && (
-            <p className="mt-2 text-sm text-gray-400">شماره باید ۱۱ رقم و با ۰۹ شروع شود</p>
+            <p className="mt-2 text-sm text-gray-400 text-right">شماره باید ۱۰ رقم و با ۹ شروع شود</p>
           )}
         </motion.div>
       </div>
