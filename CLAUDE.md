@@ -57,13 +57,42 @@ npm run dev
 - AI service uses OpenClaw at http://188.136.214.220:18789 with Ollama fallback
 - jalaliday plugin used for Jalali/Shamsi calendar dates
 
+## Authentication + Onboarding Flow (implemented)
+New user path: `/login` → `/login/phone` → `/login/otp` → `/onboarding/profile` → `/onboarding/agreement` → `/onboarding/welcome` → `/chat`
+Returning user path: `/login` → `/login/phone` → `/login/otp` → `/chat`
+
+Route guards:
+- `/onboarding/*` — requires token, redirects to `/chat` if `onboarding_completed=true`
+- `/(app)/*` — requires token AND `onboarding_completed=true`, else redirects to `/onboarding/profile`
+
+Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCompleted`, `setOnboardingCompleted`
+
+## New Endpoints (since original build)
+- `GET  /api/v1/onboarding/status`
+- `POST /api/v1/onboarding/profile`
+- `POST /api/v1/onboarding/agreement`
+- `POST /api/v1/onboarding/complete`
+- `GET  /api/v1/iran/provinces` — 31 provinces
+- `GET  /api/v1/iran/cities?province=X` — cities per province
+- `POST /api/v1/chat/voice` — multipart audio, transcribes + replies
+
+## Design System (Cleo-inspired)
+- Background: `#f5f1eb` (warm cream)
+- Primary dark: `#2d1812` (warm brown)
+- Accent: `#10b981` (emerald)
+- Buttons: `rounded-full`, `py-4`, full-width
+- Headings: Vazirmatn 800, text-4xl
+- Shared components: `PageTransition.tsx`, `OnboardingLayout.tsx`, `BgImageScreen.tsx`
+- Animations: Framer Motion throughout
+
 ## What's Done
 - [x] Backend: all models, routers, auth, AI service, seed data
 - [x] Frontend: all pages, components, auth flow, charts, admin panel
+- [x] Onboarding: full redesign — new login flow, onboarding pages, voice chat, route guards
 
 ## What's Left
 - [ ] Docker Compose (backend + frontend + nginx)
 - [ ] README with setup instructions
 - [ ] E2E testing
 - [ ] PWA manifest
-- [ ] Polish: loading states, error boundaries, date picker for Jalali
+- [ ] Polish: loading states, error boundaries, Jalali date picker

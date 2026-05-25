@@ -74,6 +74,26 @@
 - GET /users/me → user data
 - Frontend at http://localhost:3000 → 200 OK
 
+## Onboarding Redesign ✅ (2026-05-25)
+
+### Backend additions
+- User model: `family_name`, `birthdate`, `province`, `city`, `income_range`, `agreement_accepted_at`, `agreement_version`, `onboarding_completed`, `onboarding_completed_at`
+- Alembic migration `003_extend_user_onboarding` applied
+- New router `onboarding.py`: status, profile, agreement, complete endpoints
+- Iran geo data: `backend/app/data/iran_geo.py` — 31 provinces, 5-10 cities each
+- STT service `backend/app/services/stt.py` — OpenAI Whisper → OpenClaw → fallback
+- `POST /chat/voice` — multipart audio transcription + AI reply
+- `verify-otp` now returns `onboarding_completed` flag
+
+### Frontend additions
+- Auth store: added `onboardingCompleted` + `setOnboardingCompleted`
+- Framer Motion installed for page transitions
+- Shared: `PageTransition.tsx`, `OnboardingLayout.tsx`, `BgImageScreen.tsx`
+- **New pages**: `/login` (welcome), `/login/phone`, `/login/otp`
+- **New pages**: `/onboarding/profile`, `/onboarding/agreement`, `/onboarding/welcome`
+- Chat redesigned: voice mode with Web Audio waveform, example chips, new dark-brown design
+- Route guards: `(app)/layout.tsx` checks `onboardingCompleted`, `onboarding/layout.tsx` prevents re-onboarding
+
 ## What's Left ❌
 
 ### Docker & Deployment
