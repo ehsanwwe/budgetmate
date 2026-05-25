@@ -55,6 +55,7 @@ def verify_otp(body: OTPVerify, db: Session = Depends(get_db)):
         access_token=token,
         user=UserOut.model_validate(user),
         needs_profile=needs_profile,
+        onboarding_completed=bool(user.onboarding_completed),
     )
 
 

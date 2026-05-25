@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
 from app.db import Base
 
 
@@ -14,6 +14,17 @@ class User(Base):
     is_blocked = Column(Boolean, default=False)
     language = Column(String, default="fa")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Onboarding fields
+    family_name = Column(String, nullable=True)
+    birthdate = Column(Date, nullable=True)
+    province = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    income_range = Column(String, nullable=True)
+    agreement_accepted_at = Column(DateTime, nullable=True)
+    agreement_version = Column(String, nullable=True)
+    onboarding_completed = Column(Boolean, default=False)
+    onboarding_completed_at = Column(DateTime, nullable=True)
 
     @property
     def display_name(self) -> str | None:

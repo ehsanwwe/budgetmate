@@ -16,6 +16,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: UserOut
     needs_profile: bool = False
+    onboarding_completed: bool = False
 
 
 class AdminLogin(BaseModel):
