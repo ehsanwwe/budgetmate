@@ -8,7 +8,12 @@ export interface User {
   name?: string;
   first_name?: string;
   last_name?: string;
+  family_name?: string;
+  province?: string;
+  city?: string;
+  income_range?: string;
   is_blocked: boolean;
+  onboarding_completed?: boolean;
 }
 
 interface AuthState {
@@ -16,10 +21,12 @@ interface AuthState {
   user: User | null;
   adminToken: string | null;
   needsProfile: boolean;
+  onboardingCompleted: boolean;
   setToken: (token: string) => void;
   setUser: (user: User) => void;
   setAdminToken: (token: string) => void;
   setNeedsProfile: (v: boolean) => void;
+  setOnboardingCompleted: (v: boolean) => void;
   logout: () => void;
 }
 
@@ -30,11 +37,13 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       adminToken: null,
       needsProfile: false,
+      onboardingCompleted: false,
       setToken: (token) => set({ token }),
       setUser: (user) => set({ user }),
       setAdminToken: (adminToken) => set({ adminToken }),
       setNeedsProfile: (needsProfile) => set({ needsProfile }),
-      logout: () => set({ token: null, user: null, needsProfile: false }),
+      setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+      logout: () => set({ token: null, user: null, needsProfile: false, onboardingCompleted: false }),
     }),
     { name: "auth-storage" }
   )

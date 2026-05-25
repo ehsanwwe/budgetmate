@@ -1,268 +1,125 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { motion } from "framer-motion";
+import { Wallet, ShieldCheck, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
-import api from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Wallet, Loader2 } from "lucide-react";
 
-type Step = "phone" | "otp" | "profile";
-
-export default function LoginPage() {
+export default function LoginWelcomePage() {
   const router = useRouter();
-  const { setToken, setUser, setNeedsProfile, token, needsProfile } = useAuthStore();
-  const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [firstNameError, setFirstNameError] = useState("");
-  const [lastNameError, setLastNameError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const { token, onboardingCompleted } = useAuthStore();
+  const [showInfo, setShowInfo] = useState(false);
 
-  // Only redirect when token exists AND profile is complete
   useEffect(() => {
-    if (token && !needsProfile) router.replace("/dashboard");
-  }, [token, needsProfile, router]);
-
-  async function handleRequestOtp(e: React.FormEvent) {
-    e.preventDefault();
-    if (phone.length !== 11) {
-      toast.error("شماره موبایل باید ۱۱ رقم باشد");
-      return;
+    if (token) {
+      if (onboardingCompleted) router.replace("/chat");
+      else router.replace("/onboarding/profile");
     }
-    setLoading(true);
-    try {
-      await api.post("/auth/request-otp", { phone });
-      setStep("otp");
-      toast.success("کد تایید ارسال شد");
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch {
-      toast.error("خطا در ارسال کد. دوباره تلاش کنید");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerifyOtp(e: React.FormEvent) {
-    e.preventDefault();
-    const code = otp.join("");
-    if (code.length !== 6) {
-      toast.error("کد باید ۶ رقم باشد");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.post("/auth/verify-otp", { phone, code });
-      // Set token first so PATCH /users/me is authenticated
-      setToken(res.data.access_token);
-      setUser(res.data.user);
-      if (res.data.needs_profile) {
-        // Mark as needing profile — the redirect useEffect will NOT fire
-        // because it checks `token && !needsProfile`
-        setNeedsProfile(true);
-        setStep("profile");
-      } else {
-        setNeedsProfile(false);
-        toast.success("ورود موفق");
-        // useEffect will fire and redirect
-      }
-    } catch {
-      toast.error("کد نادرست است");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function validateProfile(): boolean {
-    let valid = true;
-    if (!firstName.trim()) {
-      setFirstNameError("نام الزامی است");
-      valid = false;
-    } else {
-      setFirstNameError("");
-    }
-    if (!lastName.trim()) {
-      setLastNameError("نام خانوادگی الزامی است");
-      valid = false;
-    } else {
-      setLastNameError("");
-    }
-    return valid;
-  }
-
-  async function handleCompleteProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!validateProfile()) return;
-    setLoading(true);
-    try {
-      const res = await api.patch("/users/me", {
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-      });
-      setUser(res.data);
-      setNeedsProfile(false);
-      toast.success("خوش آمدید!");
-      // useEffect will now see token && !needsProfile and redirect
-    } catch {
-      toast.error("خطا در ذخیره اطلاعات");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleOtpChange(index: number, value: string) {
-    const v = value.replace(/[^0-9۰-۹]/g, "").slice(-1);
-    const normalized = v.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
-    const newOtp = [...otp];
-    newOtp[index] = normalized;
-    setOtp(newOtp);
-    if (normalized && index < 5) otpRefs.current[index + 1]?.focus();
-    if (!normalized && index > 0) otpRefs.current[index - 1]?.focus();
-  }
-
-  function handleOtpKeyDown(index: number, e: React.KeyboardEvent) {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  }
-
-  const profileSubmitDisabled = loading || !firstName.trim() || !lastName.trim();
+  }, [token, onboardingCompleted, router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-emerald-50 p-4">
-      <div className="w-full max-w-md space-y-4">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg">
-            <Wallet className="h-7 w-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">ورود به بادجت‌میت</h1>
-          <p className="text-sm text-muted-foreground">مدیریت هوشمند مالی شخصی</p>
+    <div className="min-h-screen bg-[#f5f1eb] flex flex-col max-w-[440px] mx-auto w-full px-6" dir="rtl">
+      {/* Progress bar */}
+      <div className="pt-14 pb-2">
+        <div className="h-1 w-full bg-[#2d1812]/10 rounded-full overflow-hidden">
+          <div className="h-full w-[10%] bg-[#2d1812] rounded-full" />
         </div>
-
-        <Card className="shadow-xl border-0 bg-white/90 backdrop-blur-sm">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">
-              {step === "phone" && "شماره موبایل"}
-              {step === "otp" && "کد تایید"}
-              {step === "profile" && "تکمیل پروفایل"}
-            </CardTitle>
-            <CardDescription>
-              {step === "phone" && "شماره موبایل خود را وارد کنید"}
-              {step === "otp" && `کد ارسال شده به ${phone} را وارد کنید`}
-              {step === "profile" && "برای تکمیل ثبت‌نام نام و نام خانوادگی خود را وارد کنید"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {step === "phone" && (
-              <form onSubmit={handleRequestOtp} className="space-y-4">
-                <Input
-                  type="tel"
-                  placeholder="۰۹۱۲۰۰۰۰۰۰۱"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  maxLength={11}
-                  dir="ltr"
-                  className="text-center text-lg tracking-widest"
-                  autoFocus
-                />
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  دریافت کد
-                </Button>
-              </form>
-            )}
-
-            {step === "otp" && (
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="flex justify-center gap-2 flex-row-reverse">
-                  {otp.map((digit, i) => (
-                    <input
-                      key={i}
-                      ref={(el) => { otpRefs.current[i] = el; }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(i, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className="h-12 w-12 rounded-xl border-2 border-input bg-background text-center text-xl font-bold focus:border-primary focus:outline-none transition-colors"
-                    />
-                  ))}
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  تایید و ورود
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="w-full"
-                  onClick={() => { setStep("phone"); setOtp(["","","","","",""]); }}
-                >
-                  تغییر شماره
-                </Button>
-              </form>
-            )}
-
-            {step === "profile" && (
-              <form onSubmit={handleCompleteProfile} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>نام *</Label>
-                  <Input
-                    value={firstName}
-                    onChange={(e) => {
-                      setFirstName(e.target.value);
-                      if (e.target.value.trim()) setFirstNameError("");
-                    }}
-                    placeholder="نام"
-                    autoFocus
-                    className={firstNameError ? "border-destructive" : ""}
-                  />
-                  {firstNameError && (
-                    <p className="text-xs text-destructive">{firstNameError}</p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label>نام خانوادگی *</Label>
-                  <Input
-                    value={lastName}
-                    onChange={(e) => {
-                      setLastName(e.target.value);
-                      if (e.target.value.trim()) setLastNameError("");
-                    }}
-                    placeholder="نام خانوادگی"
-                    className={lastNameError ? "border-destructive" : ""}
-                  />
-                  {lastNameError && (
-                    <p className="text-xs text-destructive">{lastNameError}</p>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={profileSubmitDisabled}
-                >
-                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  شروع کنید
-                </Button>
-              </form>
-            )}
-
-            {step !== "profile" && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
-                <span className="font-semibold">کد آزمایشی: </span>
-                <span dir="ltr">۱۲۳۴۵۶</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col justify-center items-center text-center gap-6 py-10">
+        {/* Icon cluster */}
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.15, duration: 0.4, ease: "easeOut" }}
+          className="relative inline-flex"
+        >
+          <div className="flex items-center justify-center w-24 h-24 rounded-full bg-emerald-100">
+            <Wallet className="w-12 h-12 text-emerald-600" />
+          </div>
+          <div className="absolute -bottom-1 -left-1 flex items-center justify-center w-8 h-8 rounded-full bg-[#2d1812] shadow-md">
+            <ShieldCheck className="w-4 h-4 text-white" />
+          </div>
+        </motion.div>
+
+        {/* Heading */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.25, duration: 0.35, ease: "easeOut" }}
+          className="space-y-3"
+        >
+          <h1 className="text-4xl font-[800] text-[#2d1812] leading-tight tracking-tight">
+            به بادجت‌میت
+            <br />
+            خوش اومدی
+          </h1>
+          <p className="text-base text-gray-600 leading-relaxed max-w-[300px] mx-auto">
+            بودجه‌ت رو مدیریت کن، با دستیار هوشمند مشاوره بگیر و به اهداف مالی‌ات برس.
+          </p>
+        </motion.div>
+      </div>
+
+      {/* Bottom section */}
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.35, duration: 0.35, ease: "easeOut" }}
+        className="pb-12 space-y-3"
+      >
+        <p className="text-center text-xs text-gray-500 mb-4">ورود امن با رمز یکبارمصرف</p>
+
+        <button
+          onClick={() => router.push("/login/phone")}
+          className="w-full py-4 rounded-full bg-[#2d1812] text-white font-semibold text-base hover:bg-[#3d2218] active:scale-[0.98] transition-all"
+        >
+          شروع کن
+        </button>
+
+        <button
+          onClick={() => setShowInfo(true)}
+          className="w-full py-4 rounded-full bg-transparent border-2 border-[#2d1812] text-[#2d1812] font-semibold text-base hover:bg-[#2d1812]/5 active:scale-[0.98] transition-all"
+        >
+          بیشتر بدان
+        </button>
+      </motion.div>
+
+      {/* Info sheet */}
+      {showInfo && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setShowInfo(false)}
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[440px] bg-white rounded-t-3xl p-6 pb-10 space-y-4"
+            dir="rtl"
+          >
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-[#2d1812]">درباره بادجت‌میت</h2>
+              <button onClick={() => setShowInfo(false)} className="p-1">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="space-y-3 text-gray-600 text-sm leading-relaxed">
+              <p>بادجت‌میت یک دستیار مالی هوشمند فارسی است که به شما کمک می‌کند:</p>
+              <ul className="space-y-2 list-none">
+                <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> بودجه ماهانه خود را مدیریت کنید</li>
+                <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> هزینه‌های خود را دسته‌بندی و پیگیری کنید</li>
+                <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> با دستیار هوش مصنوعی مشاوره مالی بگیرید</li>
+                <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> برای اهداف مالی‌تان برنامه‌ریزی کنید</li>
+              </ul>
+              <p className="text-xs text-gray-400">اطلاعات شما فقط روی دستگاه شما ذخیره می‌شود. هیچ اتصالی به حساب‌های بانکی وجود ندارد.</p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }
