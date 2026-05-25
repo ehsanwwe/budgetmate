@@ -317,7 +317,7 @@ export default function ChatPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 -mt-4 md:-mt-6" dir="rtl">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden" dir="rtl">
         <div className="shrink-0 h-[57px] border-b bg-white/80" />
         <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f5f1eb]/40">
           <div className="space-y-3">
@@ -346,7 +346,7 @@ export default function ChatPage() {
 
   // Normal chat layout (messages exist, or voice mode active)
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 -mt-4 md:-mt-6" dir="rtl">
+    <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)]  -mx-4 md:-mx-6 " dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-2.5">
@@ -364,7 +364,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} />
         ))}

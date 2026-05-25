@@ -36,7 +36,7 @@ export default function ChatEmptyState({
 
   return (
     <div
-      className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 -mt-4 md:-mt-6 bg-[#f5f1eb]"
+      className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 bg-[#f5f1eb]"
       dir="rtl"
     >
       {/* 1. Top header — minimal, two icon buttons */}

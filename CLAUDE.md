@@ -89,6 +89,7 @@ Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCom
 - [x] Backend: all models, routers, auth, AI service, seed data
 - [x] Frontend: all pages, components, auth flow, charts, admin panel
 - [x] Onboarding: full redesign — new login flow, onboarding pages, voice chat, route guards
+- [x] Chat empty state: hero greeting (yellow smiley + name), suggested prompt chips, budget onboarding card, minimal header
 
 ## What's Left
 - [ ] Docker Compose (backend + frontend + nginx)
