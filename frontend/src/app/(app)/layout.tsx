@@ -7,12 +7,19 @@ import NavBar from "@/components/layout/NavBar";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
+  const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
 
   useEffect(() => {
-    if (!token) router.replace("/login");
-  }, [token, router]);
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    if (!onboardingCompleted) {
+      router.replace("/onboarding/profile");
+    }
+  }, [token, onboardingCompleted, router]);
 
-  if (!token) return null;
+  if (!token || !onboardingCompleted) return null;
 
   return (
     <div className="min-h-screen bg-muted/30">
