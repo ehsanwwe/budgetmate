@@ -18,10 +18,18 @@ const INCOME_OPTIONS = [
 
 const JALALI_YEARS = Array.from({ length: 60 }, (_, i) => 1404 - i);
 const JALALI_MONTHS = [
-  "فروردین", "اردیبهشت", "خرداد",
-  "تیر", "مرداد", "شهریور",
-  "مهر", "آبان", "آذر",
-  "دی", "بهمن", "اسفند",
+  "فروردین",
+  "اردیبهشت",
+  "خرداد",
+  "تیر",
+  "مرداد",
+  "شهریور",
+  "مهر",
+  "آبان",
+  "آذر",
+  "دی",
+  "بهمن",
+  "اسفند",
 ];
 const JALALI_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
@@ -43,15 +51,29 @@ export default function OnboardingProfilePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!token) { router.replace("/login"); return; }
-    api.get("/iran/provinces").then((r) => setProvinces(r.data.provinces)).catch(() => {});
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    api
+        .get("/iran/provinces")
+        .then((r) => setProvinces(r.data.provinces))
+        .catch(() => {});
   }, [token, router]);
 
   useEffect(() => {
-    if (!province) { setCities([]); setCity(""); return; }
-    api.get(`/iran/cities?province=${encodeURIComponent(province)}`)
-      .then((r) => { setCities(r.data.cities); setCity(""); })
-      .catch(() => {});
+    if (!province) {
+      setCities([]);
+      setCity("");
+      return;
+    }
+    api
+        .get(`/iran/cities?province=${encodeURIComponent(province)}`)
+        .then((r) => {
+          setCities(r.data.cities);
+          setCity("");
+        })
+        .catch(() => {});
   }, [province]);
 
   function jalaliToGregorian(jy: number, jm: number, jd: number): string {
@@ -93,127 +115,210 @@ export default function OnboardingProfilePage() {
     }
   }
 
-  const selectCls = "w-full bg-white border-0 rounded-xl px-4 py-3 text-[#2d1812] focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 appearance-none shadow-sm cursor-pointer";
-  const inputCls = "w-full bg-white border-0 rounded-xl px-4 py-3 text-[#2d1812] placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 shadow-sm";
+  const labelCls = "block text-[12px] font-medium text-[#2d1812]/70";
+  const inputCls =
+      "h-11 w-full rounded-[16px] border border-[#2d1812]/10 bg-white/90 px-3.5 text-[13px] text-[#2d1812] shadow-[0_6px_18px_rgba(45,24,18,0.04)] outline-none transition placeholder:text-gray-300 focus:border-[#2d1812]/25 focus:ring-4 focus:ring-[#2d1812]/5";
+  const selectCls = `${inputCls} cursor-pointer appearance-none disabled:cursor-not-allowed disabled:bg-white/50 disabled:text-gray-400`;
 
   return (
-    <OnboardingLayout backHref="/login/otp" totalSteps={5} currentStep={1} showBack={false}>
-      <motion.div
-        initial={{ y: 16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
-        className="space-y-2 mb-8"
+      <OnboardingLayout
+          backHref="/login/otp"
+          totalSteps={5}
+          currentStep={1}
+          showBack={false}
       >
-        <h1 className="text-4xl font-[800] text-[#2d1812] leading-tight tracking-tight">
-          بذار بیشتر بشناسیمت
-        </h1>
-        <p className="text-base text-gray-600 leading-relaxed">
-          این اطلاعات کمک می‌کنه مشاوره دقیق‌تری بهت بدیم
-        </p>
-      </motion.div>
-
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.3 }}
-        className="space-y-4 flex-1"
-      >
-        {/* Name */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-gray-600 pr-1">نام</label>
-          <input
-            className={inputCls}
-            placeholder="نام"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        {/* Family name */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-gray-600 pr-1">نام خانوادگی</label>
-          <input
-            className={inputCls}
-            placeholder="نام خانوادگی"
-            value={familyName}
-            onChange={(e) => setFamilyName(e.target.value)}
-          />
-        </div>
-
-        {/* Birthdate — 3 selects */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-gray-600 pr-1">تاریخ تولد (اختیاری)</label>
-          <div className="grid grid-cols-3 gap-2">
-            <select className={selectCls} value={birthYear} onChange={(e) => setBirthYear(e.target.value)}>
-              <option value="">سال</option>
-              {JALALI_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <select className={selectCls} value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)}>
-              <option value="">ماه</option>
-              {JALALI_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
-            <select className={selectCls} value={birthDay} onChange={(e) => setBirthDay(e.target.value)}>
-              <option value="">روز</option>
-              {JALALI_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {/* Province */}
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-gray-600 pr-1">استان (اختیاری)</label>
-          <select className={selectCls} value={province} onChange={(e) => setProvince(e.target.value)}>
-            <option value="">انتخاب استان</option>
-            {provinces.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-
-        {/* City */}
-        {cities.length > 0 && (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-600 pr-1">شهر (اختیاری)</label>
-            <select className={selectCls} value={city} onChange={(e) => setCity(e.target.value)}>
-              <option value="">انتخاب شهر</option>
-              {cities.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* Income range */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-600 pr-1">میانگین درآمد ماهانه (اختیاری)</label>
-          <div className="grid grid-cols-2 gap-2">
-            {INCOME_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setIncomeRange(incomeRange === opt.value ? "" : opt.value)}
-                className={`py-3 px-3 rounded-xl text-sm font-medium text-right transition-all border-2 ${
-                  incomeRange === opt.value
-                    ? "bg-[#2d1812] text-white border-[#2d1812]"
-                    : "bg-white text-[#2d1812] border-transparent shadow-sm hover:border-[#2d1812]/20"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && <p className="text-sm text-red-500">{error}</p>}
-      </motion.div>
-
-      {/* Bottom button */}
-      <div className="pt-6 pb-2">
-        <button
-          onClick={handleSubmit}
-          disabled={loading || !name.trim() || !familyName.trim()}
-          className="w-full py-4 rounded-full bg-[#2d1812] text-white font-semibold text-base disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#3d2218] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        <motion.div
+            initial={{ y: 12, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1, duration: 0.25 }}
+            className="mb-5 space-y-1.5"
         >
-          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          ادامه
-        </button>
-      </div>
-    </OnboardingLayout>
+          <p className="text-xs font-semibold text-[#2d1812]/50">مرحله ۱ از ۵</p>
+          <h1 className="text-[26px] font-[800] leading-tight tracking-[-0.02em] text-[#2d1812]">
+            تکمیل پروفایل
+          </h1>
+          <p className="max-w-[330px] text-[13px] leading-6 text-gray-500">
+            فقط نام و نام خانوادگی اجباری است؛ بقیه موارد برای شخصی‌سازی تجربه
+            مالی استفاده می‌شود.
+          </p>
+        </motion.div>
+
+        <motion.div
+            initial={{ y: 16, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.18, duration: 0.25 }}
+            className="min-h-0 flex-1 overflow-y-auto pb-3"
+        >
+          <div className="rounded-[24px] border border-white/75 bg-white/50 p-3 shadow-[0_18px_45px_rgba(45,24,18,0.06)] backdrop-blur-sm">
+            <div className="space-y-4">
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[13px] font-bold text-[#2d1812]">
+                    اطلاعات اصلی
+                  </h2>
+                  <span className="rounded-full bg-[#2d1812]/5 px-2.5 py-1 text-[11px] font-medium text-[#2d1812]/60">
+                  ضروری
+                </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>نام</span>
+                    <input
+                        className={inputCls}
+                        placeholder="مثلاً علی"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>نام خانوادگی</span>
+                    <input
+                        className={inputCls}
+                        placeholder="مثلاً رضایی"
+                        value={familyName}
+                        onChange={(e) => setFamilyName(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <div className="h-px bg-[#2d1812]/10" />
+
+              <section className="space-y-3">
+                <h2 className="text-[13px] font-bold text-[#2d1812]">
+                  اطلاعات تکمیلی
+                </h2>
+
+                <label className="space-y-1.5">
+                  <span className={labelCls}>تاریخ تولد</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                        className={selectCls}
+                        value={birthDay}
+                        onChange={(e) => setBirthDay(e.target.value)}
+                    >
+                      <option value="">روز</option>
+                      {JALALI_DAYS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                      ))}
+                    </select>
+                    <select
+                        className={selectCls}
+                        value={birthMonth}
+                        onChange={(e) => setBirthMonth(e.target.value)}
+                    >
+                      <option value="">ماه</option>
+                      {JALALI_MONTHS.map((m, i) => (
+                          <option key={i} value={i + 1}>
+                            {m}
+                          </option>
+                      ))}
+                    </select>
+                    <select
+                        className={selectCls}
+                        value={birthYear}
+                        onChange={(e) => setBirthYear(e.target.value)}
+                    >
+                      <option value="">سال</option>
+                      {JALALI_YEARS.map((y) => (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>استان</span>
+                    <select
+                        className={selectCls}
+                        value={province}
+                        onChange={(e) => setProvince(e.target.value)}
+                    >
+                      <option value="">انتخاب استان</option>
+                      {provinces.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className={labelCls}>شهر</span>
+                    <select
+                        className={selectCls}
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        disabled={!province || cities.length === 0}
+                    >
+                      <option value="">انتخاب شهر</option>
+                      {cities.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <div className="h-px bg-[#2d1812]/10" />
+
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[13px] font-bold text-[#2d1812]">
+                    میانگین درآمد ماهانه
+                  </h2>
+                  <span className="text-[11px] text-gray-400">اختیاری</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {INCOME_OPTIONS.map((opt) => {
+                    const selected = incomeRange === opt.value;
+                    return (
+                        <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setIncomeRange(selected ? "" : opt.value)}
+                            className={`min-h-10 rounded-[15px] border px-3 py-2 text-right text-[12px] font-medium leading-5 transition-all ${
+                                selected
+                                    ? "border-[#2d1812] bg-[#2d1812] text-white shadow-[0_8px_20px_rgba(45,24,18,0.16)]"
+                                    : "border-[#2d1812]/10 bg-white/75 text-[#2d1812]/75 hover:border-[#2d1812]/20 hover:bg-white"
+                            }`}
+                        >
+                          {opt.label}
+                        </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          </div>
+        </motion.div>
+
+        <div className="shrink-0 border-t border-[#2d1812]/5 bg-[#f5f1eb] pt-3 pb-2">
+          {error && (
+              <p className="mb-2 rounded-[14px] border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-600">
+                {error}
+              </p>
+          )}
+
+          <button
+              onClick={handleSubmit}
+              disabled={loading || !name.trim() || !familyName.trim()}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-[#2d1812] text-sm font-semibold text-white shadow-[0_14px_28px_rgba(45,24,18,0.18)] transition-all hover:bg-[#3d2218] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            ادامه
+          </button>
+        </div>
+      </OnboardingLayout>
   );
 }
