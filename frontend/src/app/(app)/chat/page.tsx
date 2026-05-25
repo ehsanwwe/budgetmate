@@ -7,15 +7,9 @@ import { useAuthStore } from "@/store/auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp } from "lucide-react";
+import ChatEmptyState from "@/components/chat/ChatEmptyState";
 
 interface Message { id?: number; role: "user" | "assistant"; content: string; }
-
-const EXAMPLE_PROMPTS = [
-  "برای خرید لپ‌تاپ بودجه‌بندی کن",
-  "ماهانه چقدر باید پس‌انداز کنم؟",
-  "خرج‌های این ماهم رو خلاصه کن",
-  "چطور هزینه‌های غیرضروری رو کم کنم؟",
-];
 
 const BAR_COUNT = 28;
 
@@ -81,10 +75,10 @@ export default function ChatPage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [waveformBars, setWaveformBars] = useState<number[]>(Array(BAR_COUNT).fill(0.15));
   const [sendingVoice, setSendingVoice] = useState(false);
+  const [hasBudget, setHasBudget] = useState<boolean | null>(null);
 
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
-  const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -101,23 +95,30 @@ export default function ChatPage() {
   useEffect(() => {
     async function loadHistory() {
       try {
-        const res = await api.get("/chat/history");
-        const rows = res.data.messages || [];
-        const hist: Message[] = rows.slice().reverse().map((m: { role: string; content: string }) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        }));
-        if (hist.length === 0) {
-          const firstName = user?.first_name || user?.name || "";
-          const greeting = firstName
-            ? `سلام ${firstName}! 👋 من بادجت‌میتم. می‌تونم در مورد بودجه، خرج‌ها و پس‌اندازت کمکت کنم. یه مثال: بگو 'برای خرید لپ‌تاپ ۸۰ میلیونی چطور پس‌انداز کنم؟' و من یه برنامه دقیق برات می‌چینم.`
-            : "سلام! 👋 من بادجت‌میتم. می‌تونم در مورد بودجه، خرج‌ها و پس‌اندازت کمکت کنم. چه سوالی داری؟";
-          setMessages([{ role: "assistant", content: greeting }]);
+        const [histRes, budgetRes] = await Promise.allSettled([
+          api.get("/chat/history"),
+          api.get("/budgets/current"),
+        ]);
+
+        if (budgetRes.status === "fulfilled") {
+          setHasBudget(!!budgetRes.value.data);
         } else {
+          setHasBudget(false);
+        }
+
+        if (histRes.status === "fulfilled") {
+          const rows = histRes.value.data.messages || [];
+          const hist: Message[] = rows.slice().reverse().map((m: { role: string; content: string }) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
           setMessages(hist);
+        } else {
+          setMessages([]);
         }
       } catch {
-        setMessages([{ role: "assistant", content: "سلام! چطور می‌تونم کمکت کنم؟" }]);
+        setMessages([]);
+        setHasBudget(false);
       } finally {
         setLoading(false);
       }
@@ -226,7 +227,6 @@ export default function ChatPage() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Web Audio API for visualizer
       try {
         const ctx = new AudioContext();
         const source = ctx.createMediaStreamSource(stream);
@@ -304,20 +304,47 @@ export default function ChatPage() {
   async function clearHistory() {
     try {
       await api.delete("/chat/history");
-      const firstName = user?.first_name || user?.name || "";
-      const greeting = firstName
-        ? `سلام ${firstName}! 👋 من بادجت‌میتم. چطور می‌تونم کمکت کنم؟`
-        : "سلام! چطور می‌تونم کمکت کنم؟";
-      setMessages([{ role: "assistant", content: greeting }]);
+      setMessages([]);
       toast.success("تاریخچه پاک شد");
     } catch {
       toast.error("خطا در پاک کردن تاریخچه");
     }
   }
 
-  const isEmpty = messages.length <= 1 && messages[0]?.role === "assistant";
+  const firstName = user?.first_name || user?.name || "";
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 -mt-4 md:-mt-6" dir="rtl">
+        <div className="shrink-0 h-[57px] border-b bg-white/80" />
+        <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f5f1eb]/40">
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-2xl" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state — no messages, not in voice mode
+  if (messages.length === 0 && !voiceMode) {
+    return (
+      <ChatEmptyState
+        firstName={firstName}
+        hasBudget={hasBudget}
+        input={input}
+        onInputChange={setInput}
+        onSend={() => sendMessage()}
+        onPromptClick={(text) => sendMessage(text)}
+        onVoiceModeClick={() => { setVoiceMode(true); setAudioBlob(null); }}
+        streaming={streaming}
+      />
+    );
+  }
+
+  // Normal chat layout (messages exist, or voice mode active)
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-2rem)] -mx-4 md:-mx-6 -mt-4 md:-mt-6" dir="rtl">
       {/* Header */}
@@ -338,56 +365,23 @@ export default function ChatPage() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
-        {loading ? (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-2xl" />)}
+        {messages.map((msg, i) => (
+          <MessageBubble key={i} message={msg} />
+        ))}
+        {streaming && streamingText && (
+          <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
+        )}
+        {streaming && !streamingText && (
+          <div className="flex gap-2">
+            <Avatar className="h-7 w-7 shrink-0">
+              <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
+            </Avatar>
+            <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
+              {[0, 150, 300].map((d) => (
+                <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+              ))}
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Example chips when empty */}
-            <AnimatePresence>
-              {isEmpty && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="mb-4"
-                >
-                  <p className="text-xs text-gray-400 mb-2 text-center">چند نمونه سؤال:</p>
-                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                    {EXAMPLE_PROMPTS.map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => sendMessage(p)}
-                        className="shrink-0 text-xs bg-white border border-gray-200 text-[#2d1812] px-3 py-2 rounded-full hover:bg-[#2d1812] hover:text-white hover:border-[#2d1812] transition-colors shadow-sm"
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} />
-            ))}
-            {streaming && streamingText && (
-              <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
-            )}
-            {streaming && !streamingText && (
-              <div className="flex gap-2">
-                <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
-                </Avatar>
-                <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
-                  {[0, 150, 300].map((d) => (
-                    <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
         )}
         <div ref={bottomRef} />
       </div>
@@ -404,7 +398,6 @@ export default function ChatPage() {
               exit={{ opacity: 0, y: 8 }}
               className="flex items-end gap-2"
             >
-              {/* Send button (rtl: on right = text-start side) */}
               <button
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || streaming}
@@ -424,7 +417,6 @@ export default function ChatPage() {
                 />
               </div>
 
-              {/* Mic toggle */}
               <button
                 onClick={() => { setVoiceMode(true); setAudioBlob(null); }}
                 className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-emerald-100 hover:text-emerald-600 transition-colors"
@@ -441,10 +433,8 @@ export default function ChatPage() {
               exit={{ opacity: 0, y: 8 }}
               className="space-y-3"
             >
-              {/* Waveform */}
               <WaveformVisualizer bars={waveformBars} />
 
-              {/* Timer or ready state */}
               <p className="text-center text-xs text-gray-500">
                 {recording
                   ? `در حال ضبط… ${formatTime(recordingSecs)}`
@@ -453,9 +443,7 @@ export default function ChatPage() {
                   : "روی دکمه بزن تا ضبط شروع شه"}
               </p>
 
-              {/* Controls row */}
               <div className="flex items-center justify-center gap-4">
-                {/* Cancel */}
                 <button
                   onClick={cancelVoice}
                   className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors"
@@ -463,7 +451,6 @@ export default function ChatPage() {
                   <X className="w-4 h-4" />
                 </button>
 
-                {/* Record / Stop */}
                 <button
                   onClick={recording ? () => stopRecording(true) : startRecording}
                   className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
@@ -475,7 +462,6 @@ export default function ChatPage() {
                   {recording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
 
-                {/* Send (only when we have a blob) */}
                 {audioBlob ? (
                   <button
                     onClick={sendVoice}
