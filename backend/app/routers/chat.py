@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -11,6 +11,7 @@ from app.schemas.chat import ChatMessageIn, ChatReply, ChatHistoryResponse, Chat
 from app.services.finance_agent import handle_finance_message
 from app.services.billing import INSUFFICIENT_TOKENS_MESSAGE, consume_chat_tokens, ensure_wallet
 from app.services.token_meter import estimate_tokens, estimate_chat_usage
+from app.services.stt import transcribe_audio
 import json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -103,6 +104,44 @@ def get_history(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post("/voice")
+async def voice_message(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Accept audio file, transcribe to Persian text, forward to AI chat pipeline."""
+    audio_bytes = await audio.read()
+    content_type = audio.content_type or "audio/webm"
+    stt_result = await transcribe_audio(audio_bytes, content_type)
+
+    if stt_result.get("error") and not stt_result.get("transcript"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"transcript": "", "error": stt_result["error"]},
+        )
+
+    transcript = stt_result["transcript"]
+    if not transcript.strip():
+        return {"transcript": "", "reply": "", "message_id": None}
+
+    # Forward transcript to chat pipeline
+    wallet = ensure_wallet(db, current_user.id)
+    est_prompt = estimate_tokens(transcript)
+    if wallet.balance_tokens <= 0 or wallet.balance_tokens < est_prompt:
+        return {"transcript": transcript, "reply": INSUFFICIENT_TOKENS_MESSAGE, "message_id": None}
+
+    _save_message(db, current_user.id, MessageRole.user, transcript)
+    reply = await handle_finance_message(transcript, current_user, db)
+    assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
+
+    usage = estimate_chat_usage(transcript, reply)
+    consume_chat_tokens(db, current_user.id, usage, chat_message_id=assistant_msg.id)
+
+    return {"transcript": transcript, "reply": reply, "message_id": assistant_msg.id}
 
 
 @router.delete("/history", status_code=status.HTTP_204_NO_CONTENT)

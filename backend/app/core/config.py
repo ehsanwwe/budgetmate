@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = f"sqlite:///{(BACKEND_DIR / 'budgetmate.db').as_posix()}"
     CORS_ORIGINS: str = "http://localhost:3000"
     STARTER_FREE_TOKENS: int = 20000
+    OPENAI_API_KEY: str = ""
 
     @field_validator("DATABASE_URL")
     @classmethod
