@@ -1,0 +1,38 @@
+stages:
+  - deploy
+
+image: ubuntu:cicd
+
+variables:
+  DEPLOY_HOST: "172.16.16.56"
+  DEPLOY_USER: "root"
+  DEPLOY_PATH: "/root/ai_agent_erp/budgetmate"
+
+before_script:
+  # Setup SSH
+  - mkdir -p ~/.ssh
+  - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_ed25519
+  - chmod 600 ~/.ssh/id_ed25519
+
+  # Disable host key prompt
+  - |
+    cat > ~/.ssh/config <<EOF
+    Host *
+      StrictHostKeyChecking no
+      UserKnownHostsFile=/dev/null
+    EOF
+
+deploy:
+  stage: deploy
+  only:
+    - main
+
+  script:
+    # Deploy on remote server
+    - |
+      ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
+        cd ${DEPLOY_PATH} && \
+        git pull origin main && \
+        docker compose down && \
+        docker compose up -d --build
+      "

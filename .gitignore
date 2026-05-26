@@ -5,7 +5,6 @@ __pycache__/
 .env
 *.db
 *.sqlite3
-.next/
 alembic/versions/__pycache__/
 *.egg-info/
 dist/
@@ -16,3 +15,14 @@ server.log
 server.err
 .idea/
 .aider*
+.git
+.gitlab
+node_modules
+frontend/node_modules
+__pycache__
+*.pyc
+dist
+.next
+backend/.env
+frontend/.env
+backend/budgetmate.db
