@@ -1,0 +1,36 @@
+services:
+  apijibyar:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: apijibyar
+    restart: unless-stopped
+    ports:
+      - "8008:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+
+  jibyar:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: jibyar
+    restart: unless-stopped
+    ports:
+      - "8081:3000"
+    env_file:
+      - ./frontend/.env
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - apijibyar
+    command: npm run start
