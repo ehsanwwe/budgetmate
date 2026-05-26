@@ -83,7 +83,7 @@ async def _try_openclaw(messages: list, model: str) -> Optional[str]:
 
 
 async def _try_ollama(messages: list, model: str) -> Optional[str]:
-    url = "http://localhost:11434/v1/chat/completions"
+    url = "http://188.136.214.220:11434/v1/chat/completions"
     body = {"model": model, "messages": messages, "stream": False}
     try:
         async with httpx.AsyncClient(timeout=60) as client:
