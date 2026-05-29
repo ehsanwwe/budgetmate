@@ -85,7 +85,7 @@ def build_finance_context(user: User, db: Session) -> dict:
     goals = db.query(Goal).filter(Goal.user_id == user.id, Goal.current_amount < Goal.target_amount).all()
 
     return {
-        "user": {"id": user.id, "name": user.name, "phone": user.phone},
+        "user": {"id": user.id, "name": user.name, "phone": user.phone, "income_range": user.income_range},
         "current_jalali_month": jm,
         "current_jalali_year": jy,
         "current_gregorian_date": today.isoformat(),

@@ -182,4 +182,5 @@ async def handle_finance_message(message: str, user: User, db: Session) -> str:
     if classified.get("intent") in {"create_transaction", "create_income"} and amount:
         return "برای ثبت تراکنش، لطفا دسته یا توضیح را هم مشخص کن."
 
-    return await get_ai_reply(message, context)
+    chat_mode = getattr(user, "chat_mode", "normal") or "normal"
+    return await get_ai_reply(message, context, chat_mode)
