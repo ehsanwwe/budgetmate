@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 VALID_INCOME_RANGES = {"lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"}
+VALID_CHAT_MODES = {"normal", "roast", "hype"}
 
 
 class UserOut(BaseModel):
@@ -19,6 +20,7 @@ class UserOut(BaseModel):
     city: Optional[str] = None
     income_range: Optional[str] = None
     onboarding_completed: bool = False
+    chat_mode: str = "normal"
 
     model_config = {"from_attributes": True}
 
@@ -27,6 +29,14 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    chat_mode: Optional[str] = None
+
+    @field_validator("chat_mode", mode="before")
+    @classmethod
+    def validate_chat_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_CHAT_MODES:
+            raise ValueError(f"chat_mode must be one of: {', '.join(VALID_CHAT_MODES)}")
+        return v
 
     @field_validator("first_name", "last_name", mode="before")
     @classmethod

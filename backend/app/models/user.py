@@ -25,6 +25,7 @@ class User(Base):
     agreement_version = Column(String, nullable=True)
     onboarding_completed = Column(Boolean, default=False)
     onboarding_completed_at = Column(DateTime, nullable=True)
+    chat_mode = Column(String, default="normal")
 
     @property
     def display_name(self) -> str | None:

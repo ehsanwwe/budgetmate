@@ -25,6 +25,8 @@ def update_me(
         current_user.first_name = body.first_name
     if body.last_name is not None:
         current_user.last_name = body.last_name
+    if body.chat_mode is not None:
+        current_user.chat_mode = body.chat_mode
     db.commit()
     db.refresh(current_user)
     return current_user
