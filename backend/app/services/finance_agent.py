@@ -21,7 +21,7 @@ CATEGORY_HINTS = {
     "سرگرمی": ["فیلم", "بازی", "تفریح", "سرگرمی", "سینما"],
 }
 
-EXPENSE_WORDS = ["هزینه", "خرج", "خریدم", "پرداخت", "اضافه بکن", "اضافه کن", "ثبت کن"]
+EXPENSE_WORDS = ["هزینه", "خرج", "پرداخت", "اضافه بکن", "اضافه کن", "ثبت کن"]
 INCOME_WORDS = ["درآمد", "حقوق", "واریز", "دریافت"]
 GOAL_WORDS = ["هدف", "گول", "پس انداز", "پس‌انداز"]
 
@@ -128,9 +128,7 @@ async def handle_finance_message(message: str, user: User, db: Session) -> str:
             return _goal_answer(goals[0])
         return _multiple_goals_reply(goals)
 
-    if amount and is_goal_message and any(word in clean for word in ["اضافه", "کنار", "پس انداز", "پس‌انداز", "واریز"]):
-        if not goals:
-            return "برای ثبت پس‌انداز، اول یک هدف مالی بساز."
+    if amount and is_goal_message and goals and any(word in clean for word in ["اضافه", "کنار", "واریز"]):
         goal_data = _match_goal(message, goals) or (goals[0] if len(goals) == 1 else None)
         if not goal_data:
             return _multiple_goals_reply(goals)
@@ -172,15 +170,16 @@ async def handle_finance_message(message: str, user: User, db: Session) -> str:
         lines.extend([f"{cat['name']}: {_money(cat['amount'])}" for cat in context["top_expense_categories"]])
         return "\n".join(lines)
 
-    if any(term in clean for term in ["بودجه", "کافیه", "باقی مانده", "باقی‌مانده"]):
+    SET_BUDGET_WORDS = ["بذار", "تنظیم", "قرار بده", "ست کن", "بگذار", "بزن"]
+    is_set_budget = any(w in clean for w in SET_BUDGET_WORDS)
+    if not is_set_budget and any(term in clean for term in ["بودجه", "کافیه", "باقی مانده", "باقی‌مانده"]):
         budget = context["budget"]["amount"]
         spent = context["total_spent_this_month"]
         remaining = context["remaining_budget"]
         return f"بودجه ماهانه‌ات {_money(budget)} است. تا الان {_money(spent)} خرج کرده‌ای و مانده بودجه {_money(remaining)} است."
 
-    classified = await _llm_classify(message, context)
-    if classified.get("intent") in {"create_transaction", "create_income"} and amount:
-        return "برای ثبت تراکنش، لطفا دسته یا توضیح را هم مشخص کن."
+    # Let AI handle everything else — it has the action spec and will create goals/transactions/budgets
+    # as needed via JSON action blocks processed by ai_actions.process_ai_reply
 
     chat_mode = getattr(user, "chat_mode", "normal") or "normal"
     return await get_ai_reply(message, context, chat_mode)
