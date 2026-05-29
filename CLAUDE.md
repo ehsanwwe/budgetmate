@@ -85,11 +85,29 @@ Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCom
 - Shared components: `PageTransition.tsx`, `OnboardingLayout.tsx`, `BgImageScreen.tsx`
 - Animations: Framer Motion throughout
 
+## AI Chat Pipeline (upgraded)
+- `backend/app/services/ai.py` — `build_system_prompt(context, chat_mode)` with five sections: base persona, tone directive, user financial context (income range → toman midpoint), behavior rules, action spec.
+- `backend/app/services/ai_actions.py` — `extract_actions`, `execute_action`, `process_ai_reply`. Strips ```json {...}``` action blocks from AI reply, executes them (create_goal / create_transaction / set_budget), appends Persian ✅/⚠️ confirmation lines.
+- `/chat/message` and `/chat/stream` both run `process_ai_reply` before saving. Stream emits `event: complete` with canonical final text after raw streaming.
+- `User.chat_mode` column (normal/roast/hype) — migration 004. Exposed in `UserOut`, accepted in `PATCH /users/me`.
+- Profile page has a 3-pill chat mode selector that immediately PATCHes on click.
+- Chat page SSE parser handles `event: complete` by replacing accumulated text with the canonical processed text.
+
+## Income Range → Toman Midpoint Map
+| range | midpoint |
+|-------|---------|
+| lt10 | 7,000,000 |
+| 10to20 | 15,000,000 |
+| 20to40 | 30,000,000 |
+| 40to80 | 60,000,000 |
+| gt80 | 100,000,000 |
+
 ## What's Done
 - [x] Backend: all models, routers, auth, AI service, seed data
 - [x] Frontend: all pages, components, auth flow, charts, admin panel
 - [x] Onboarding: full redesign — new login flow, onboarding pages, voice chat, route guards
 - [x] Chat empty state: hero greeting (yellow smiley + name), suggested prompt chips, budget onboarding card, minimal header
+- [x] AI chat improvements: behavior rules, tone modes, auto-execute actions from chat
 
 ## What's Left
 - [ ] Docker Compose (backend + frontend + nginx)
