@@ -13,6 +13,7 @@ export interface User {
   province?: string;
   city?: string;
   income_range?: string;
+  chat_mode?: string;
   is_blocked: boolean;
   onboarding_completed?: boolean;
 }

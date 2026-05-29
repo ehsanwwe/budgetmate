@@ -21,6 +21,12 @@ import {
   Zap,
 } from "lucide-react";
 
+const CHAT_MODE_OPTIONS = [
+  { value: "normal", emoji: "😊", label: "عادی", desc: "صمیمی و کاربردی" },
+  { value: "roast", emoji: "🔥", label: "طعنه‌آمیز", desc: "تذکر با طنز سبک" },
+  { value: "hype", emoji: "🎉", label: "پرانرژی", desc: "تشویق و انرژی مثبت" },
+];
+
 const INCOME_OPTIONS = [
   { value: "lt10", label: "کمتر از ۱۰ میلیون تومان" },
   { value: "10to20", label: "۱۰ تا ۲۰ میلیون" },
@@ -108,6 +114,8 @@ export default function ProfilePage() {
   const [province, setProvince] = useState(initialProfile.province);
   const [city, setCity] = useState(initialProfile.city);
   const [incomeRange, setIncomeRange] = useState(initialProfile.incomeRange);
+  const [chatMode, setChatMode] = useState<string>(user?.chat_mode || "normal");
+  const [savingMode, setSavingMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -128,6 +136,7 @@ export default function ProfilePage() {
         setProvince(nextProfile.province);
         setCity(nextProfile.city);
         setIncomeRange(nextProfile.incomeRange);
+        setChatMode(nextUser.chat_mode || "normal");
       })
       .catch(() => {});
   }, [setUser]);
@@ -186,6 +195,22 @@ export default function ProfilePage() {
       toast.error("خطا در بروزرسانی پروفایل");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleChatModeChange(mode: string) {
+    if (mode === chatMode) return;
+    setChatMode(mode);
+    setSavingMode(true);
+    try {
+      await api.patch("/users/me", { chat_mode: mode });
+      const meRes = await api.get("/users/me");
+      setUser(meRes.data);
+      toast.success("حالت دستیار تغییر کرد");
+    } catch {
+      toast.error("خطا در تغییر حالت دستیار");
+    } finally {
+      setSavingMode(false);
     }
   }
 
@@ -375,6 +400,36 @@ export default function ProfilePage() {
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             ذخیره تغییرات
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-2xl">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-base">حالت دستیار</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <div className="grid grid-cols-3 gap-2">
+            {CHAT_MODE_OPTIONS.map((opt) => {
+              const selected = chatMode === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={savingMode}
+                  onClick={() => handleChatModeChange(opt.value)}
+                  className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-center transition-colors disabled:opacity-60 ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-gray-200 bg-white text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                  }`}
+                >
+                  <span className="text-xl">{opt.emoji}</span>
+                  <span className="text-xs font-semibold">{opt.label}</span>
+                  <span className={`text-[10px] leading-tight ${selected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{opt.desc}</span>
+                </button>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
 
