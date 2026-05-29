@@ -12,6 +12,7 @@ from app.services.finance_agent import handle_finance_message
 from app.services.billing import INSUFFICIENT_TOKENS_MESSAGE, consume_chat_tokens, ensure_wallet
 from app.services.token_meter import estimate_tokens, estimate_chat_usage
 from app.services.stt import transcribe_audio
+from app.services.ai_actions import process_ai_reply
 import json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -37,7 +38,8 @@ async def send_message(
         return ChatReply(reply=INSUFFICIENT_TOKENS_MESSAGE)
 
     _save_message(db, current_user.id, MessageRole.user, body.content)
-    reply = await handle_finance_message(body.content, current_user, db)
+    raw_reply = await handle_finance_message(body.content, current_user, db)
+    reply = process_ai_reply(raw_reply, db, current_user)
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 
     usage = estimate_chat_usage(body.content, reply)
@@ -70,13 +72,17 @@ async def stream_message(
         return StreamingResponse(insufficient(), media_type="text/event-stream")
 
     async def event_generator():
-        reply = await handle_finance_message(user_content, current_user, db)
-        for word in reply.split(" "):
+        raw_reply = await handle_finance_message(user_content, current_user, db)
+        # Stream the raw text word-by-word so the frontend can show progress
+        for word in raw_reply.split(" "):
             yield f"data: {json.dumps({'chunk': word + ' '}, ensure_ascii=False)}\n\n"
+        # Process action blocks (may execute DB writes), then emit canonical final text
+        final_reply = process_ai_reply(raw_reply, db, current_user)
+        yield f"event: complete\ndata: {json.dumps({'text': final_reply}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
         _save_message(db, current_user.id, MessageRole.user, user_content)
-        assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
-        usage = estimate_chat_usage(user_content, reply)
+        assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, final_reply)
+        usage = estimate_chat_usage(user_content, final_reply)
         consume_chat_tokens(db, current_user.id, usage, chat_message_id=assistant_msg.id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -135,7 +141,8 @@ async def voice_message(
         return {"transcript": transcript, "reply": INSUFFICIENT_TOKENS_MESSAGE, "message_id": None}
 
     _save_message(db, current_user.id, MessageRole.user, transcript)
-    reply = await handle_finance_message(transcript, current_user, db)
+    raw_reply = await handle_finance_message(transcript, current_user, db)
+    reply = process_ai_reply(raw_reply, db, current_user)
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 
     usage = estimate_chat_usage(transcript, reply)
