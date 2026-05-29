@@ -156,22 +156,35 @@ export default function ChatPage() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      let currentEventType = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
         for (const line of chunk.split("\n")) {
-          if (line.startsWith("data: ")) {
+          if (line.startsWith("event: ")) {
+            currentEventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
             const data = line.slice(6).trim();
-            if (data === "[DONE]") continue;
+            if (data === "[DONE]") { currentEventType = ""; continue; }
             try {
               const parsed = JSON.parse(data);
-              accumulated += parsed.chunk || parsed.text || parsed.content || "";
+              if (currentEventType === "complete") {
+                // Replace accumulated with canonical processed text (confirmations appended, action blocks stripped)
+                accumulated = parsed.text || parsed.content || accumulated;
+                setStreamingText(accumulated);
+              } else {
+                accumulated += parsed.chunk || parsed.text || parsed.content || "";
+                setStreamingText(accumulated);
+              }
             } catch {
-              accumulated += data;
+              if (currentEventType !== "complete") {
+                accumulated += data;
+                setStreamingText(accumulated);
+              }
             }
-            setStreamingText(accumulated);
+            currentEventType = "";
           }
         }
       }
