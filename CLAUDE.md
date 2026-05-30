@@ -102,12 +102,23 @@ Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCom
 | 40to80 | 60,000,000 |
 | gt80 | 100,000,000 |
 
+## Admin Panel (enhanced)
+- **Auth isolation**: `api` 401 handler is path-aware — `/admin/*` routes redirect to `/admin`, user routes redirect to `/login`. `adminApi` has same path-aware logic.
+- **DELETE `/api/v1/admin/users/{user_id}`**: cascade-deletes user + all related records (billing tokens, chat messages, transactions, budgets, goals, activity logs). Logs `admin_deleted_user` before deletion. Returns `{deleted: true, user_id}`.
+- **GET `/api/v1/admin/users/{user_id}/chats`**: paginated chat history. Params: `page`, `page_size`. Response: `{items, page, page_size, total}`. Within each page messages are ASC (natural reading order).
+- **Extended `UserOut`**: now includes `birthdate`, `agreement_accepted_at`, `agreement_version`, `onboarding_completed_at`.
+- **User detail page** (`/admin/users/[id]`): two tabs — "اطلاعات کاربر" (full info table + block/unblock/delete/back buttons) and "گفت‌وگوها" (paginated chat timeline).
+- **DeleteUserDialog** (`components/admin/DeleteUserDialog.tsx`): requires admin to type exact phone number before delete button enables.
+- **Users list** (`/admin/users`): trash icon per row opens DeleteUserDialog; refreshes list after deletion.
+- **Helpers**: `relativeTime(iso)` in `lib/fmt.ts`; `incomeRangeLabel`, `chatModeLabel` in `lib/labels.ts`. Badge `warning` variant added.
+
 ## What's Done
 - [x] Backend: all models, routers, auth, AI service, seed data
 - [x] Frontend: all pages, components, auth flow, charts, admin panel
 - [x] Onboarding: full redesign — new login flow, onboarding pages, voice chat, route guards
 - [x] Chat empty state: hero greeting (yellow smiley + name), suggested prompt chips, budget onboarding card, minimal header
 - [x] AI chat improvements: behavior rules, tone modes, auto-execute actions from chat
+- [x] Admin panel: auth isolation, delete user endpoint + dialog, chat history endpoint + timeline, extended user detail with tabs
 
 ## What's Left
 - [ ] Docker Compose (backend + frontend + nginx)
