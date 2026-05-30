@@ -18,7 +18,13 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-_ACTION_BLOCK_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
+_ACTION_BLOCK_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S | re.IGNORECASE)
+
+_REQUIRED_FIELDS: dict[str, list[str]] = {
+    "create_transaction": ["amount", "type", "category"],
+    "create_goal": ["title", "target_amount"],
+    "set_budget": ["amount"],
+}
 
 
 def _jalali_to_gregorian_date(jalali_str: str) -> Optional[date]:
@@ -79,7 +85,7 @@ def _deadline_from_jalali(deadline_val) -> Optional[date]:
 
 
 def extract_actions(reply_text: str) -> tuple[str, list[dict]]:
-    """Return (cleaned_text, list_of_action_dicts). Malformed blocks are skipped."""
+    """Return (cleaned_text, list_of_action_dicts). Malformed/incomplete blocks are skipped."""
     actions: list[dict] = []
     cleaned = reply_text
 
@@ -87,10 +93,17 @@ def extract_actions(reply_text: str) -> tuple[str, list[dict]]:
         raw_json = match.group(1)
         try:
             action = json.loads(raw_json)
-            if isinstance(action, dict) and "action" in action:
-                actions.append(action)
+            if not isinstance(action, dict) or "action" not in action:
+                continue
+            action_type = action["action"]
+            required = _REQUIRED_FIELDS.get(action_type, [])
+            if not all(k in action for k in required):
+                logger.debug("Skipping action %s: missing required fields %s", action_type, required)
                 cleaned = cleaned.replace(match.group(0), "", 1)
-        except json.JSONDecodeError:
+                continue
+            actions.append(action)
+            cleaned = cleaned.replace(match.group(0), "", 1)
+        except (json.JSONDecodeError, ValueError):
             logger.debug("Skipping malformed action block: %s", raw_json[:200])
 
     cleaned = cleaned.strip()
@@ -122,8 +135,9 @@ def execute_action(action: dict, db: Session, user: User) -> dict:
         if kind == "create_goal":
             title = str(action.get("title", "هدف جدید"))
             target = int(action.get("target_amount", 0))
-            if target <= 0:
-                return {"ok": False, "reason": "مبلغ هدف معتبر نیست"}
+            if target < 100000:
+                logger.warning("Rejected create_goal: target_amount=%s is below 100000", target)
+                return {"ok": False, "reason": f"مبلغ هدف {target} تومان معقول نیست. حداقل ۱۰۰٬۰۰۰ تومان لازم است."}
             deadline = _deadline_from_jalali(action.get("deadline"))
             goal = Goal(user_id=user.id, title=title, target_amount=target, current_amount=0, deadline=deadline)
             db.add(goal)
@@ -132,13 +146,18 @@ def execute_action(action: dict, db: Session, user: User) -> dict:
 
         if kind == "create_transaction":
             amount = int(action.get("amount", 0))
-            if amount <= 0:
-                return {"ok": False, "reason": "مبلغ تراکنش معتبر نیست"}
+            if amount < 1000:
+                logger.warning("Rejected create_transaction: amount=%s is below 1000", amount)
+                return {"ok": False, "reason": f"مبلغ {amount} تومان معقول نیست. حداقل ۱۰۰۰ تومان لازم است."}
             tx_type_raw = str(action.get("type", "expense"))
+            if tx_type_raw not in ("expense", "income"):
+                return {"ok": False, "reason": "نوع تراکنش نامعتبر است."}
             tx_type = TransactionType.income if tx_type_raw == "income" else TransactionType.expense
             category_name = str(action.get("category", ""))
             category = _find_category(category_name, db, user.id) if category_name else None
-            description = str(action.get("description", "")) or category_name or ("درآمد" if tx_type == TransactionType.income else "هزینه")
+            description = str(action.get("description", "")).strip() or category_name or ("درآمد" if tx_type == TransactionType.income else "هزینه")
+            if len(description) < 2:
+                return {"ok": False, "reason": "توضیح تراکنش کوتاه/ناقص است."}
             date_val = action.get("date", "today")
             if date_val == "today" or not date_val:
                 tx_date = date.today()
@@ -159,8 +178,9 @@ def execute_action(action: dict, db: Session, user: User) -> dict:
 
         if kind == "set_budget":
             amount = int(action.get("amount", 0))
-            if amount <= 0:
-                return {"ok": False, "reason": "مبلغ بودجه معتبر نیست"}
+            if amount < 100000:
+                logger.warning("Rejected set_budget: amount=%s is below 100000", amount)
+                return {"ok": False, "reason": f"مبلغ بودجه {amount} تومان معقول نیست. حداقل ۱۰۰٬۰۰۰ تومان لازم است."}
             jm, jy = current_jalali_month()
             budget = db.query(Budget).filter(
                 Budget.user_id == user.id, Budget.month == jm, Budget.year == jy
@@ -181,17 +201,22 @@ def execute_action(action: dict, db: Session, user: User) -> dict:
 
 
 def process_ai_reply(reply_text: str, db: Session, user: User) -> str:
-    """Extract action blocks, execute them, return final visible text with confirmations."""
+    """Extract action blocks, execute them, return final visible text with confirmations.
+
+    Failed actions are logged server-side only — never shown to the user.
+    """
     cleaned, actions = extract_actions(reply_text)
-    lines: list[str] = []
+    confirmations: list[str] = []
     for action in actions:
         result = execute_action(action, db, user)
         if result["ok"]:
-            lines.append(result["confirmation"])
+            confirmations.append(result["confirmation"])
         else:
-            kind = action.get("action", "action")
-            lines.append(f"⚠️ نتونستم {kind} رو ثبت کنم: {result['reason']}. می‌خوای دوباره بگی؟")
+            logger.warning(
+                "Action rejected (user=%s, action=%s): %s",
+                user.id, action.get("action"), result.get("reason"),
+            )
 
-    if lines:
-        return cleaned + "\n\n" + "\n".join(lines)
+    if confirmations:
+        return cleaned + "\n\n" + "\n".join(confirmations)
     return cleaned

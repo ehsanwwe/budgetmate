@@ -118,6 +118,7 @@ Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCom
 - [x] Onboarding: full redesign — new login flow, onboarding pages, voice chat, route guards
 - [x] Chat empty state: hero greeting (yellow smiley + name), suggested prompt chips, budget onboarding card, minimal header
 - [x] AI chat improvements: behavior rules, tone modes, auto-execute actions from chat
+- [x] AI action safety: no actions fired for advice/hypothetical questions; backend rejects transactions < 1000 toman, goals < 100k, budgets < 100k; failed actions logged silently (never shown to user)
 - [x] Admin panel: auth isolation, delete user endpoint + dialog, chat history endpoint + timeline, extended user detail with tabs
 
 ## What's Left
