@@ -7,8 +7,7 @@ services:
     restart: unless-stopped
     ports:
       - "8008:8000"
-    volumes:
-      - ./budgetmate.db:/app/budgetmate.db
+
     env_file:
       - ./backend/.env
     environment:
