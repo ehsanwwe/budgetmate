@@ -27,8 +27,13 @@ api.interceptors.response.use(
   (err) => {
     if (typeof window !== "undefined") {
       if (err.response?.status === 401) {
-        localStorage.removeItem("auth-storage");
-        window.location.href = "/login";
+        const isAdminRoute = window.location.pathname.startsWith("/admin");
+        if (isAdminRoute) {
+          window.location.href = "/admin";
+        } else {
+          localStorage.removeItem("auth-storage");
+          window.location.href = "/login";
+        }
       } else if (err.response?.status === 403) {
         window.location.href = "/blocked";
       }
@@ -64,8 +69,9 @@ adminApi.interceptors.response.use(
   (err) => {
     if (typeof window !== "undefined") {
       if (err.response?.status === 401) {
+        const isAdminRoute = window.location.pathname.startsWith("/admin");
         localStorage.removeItem("auth-storage");
-        window.location.href = "/admin";
+        window.location.href = isAdminRoute ? "/admin" : "/login";
       }
     }
     return Promise.reject(err);
