@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Shield, ShieldOff, ChevronLeft, Loader2 } from "lucide-react";
+import { Search, Shield, ShieldOff, ChevronLeft, Loader2, Trash2 } from "lucide-react";
+import DeleteUserDialog from "@/components/admin/DeleteUserDialog";
 
 interface User {
   id: number;
@@ -26,15 +27,16 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const perPage = 20;
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
-      if (search) params.append("search", search);
+      const params = new URLSearchParams({ page: String(page), page_size: String(perPage) });
+      if (search) params.append("q", search);
       const res = await adminApi.get(`/admin/users?${params}`);
-      setUsers(res.data.items || res.data);
-      setTotal(res.data.total || res.data.length);
+      setUsers(res.data.users || res.data.items || []);
+      setTotal(res.data.total || 0);
     } catch {
       toast.error("خطا در بارگذاری کاربران");
     } finally {
@@ -43,9 +45,7 @@ export default function AdminUsersPage() {
   }, [page, search]);
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void load();
-    });
+    queueMicrotask(() => { void load(); });
   }, [load]);
 
   async function toggleBlock(user: User) {
@@ -54,7 +54,7 @@ export default function AdminUsersPage() {
       const action = user.is_blocked ? "unblock" : "block";
       await adminApi.post(`/admin/users/${user.id}/${action}`);
       toast.success(user.is_blocked ? "کاربر رفع مسدودی شد" : "کاربر مسدود شد");
-      load();
+      void load();
     } catch {
       toast.error("خطا در انجام عملیات");
     } finally {
@@ -73,7 +73,12 @@ export default function AdminUsersPage() {
 
       <div className="relative">
         <Search className="absolute start-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input className="ps-9" placeholder="جستجو بر اساس شماره یا نام..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <Input
+          className="ps-9"
+          placeholder="جستجو بر اساس شماره یا نام..."
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </div>
 
       <Card>
@@ -120,6 +125,14 @@ export default function AdminUsersPage() {
                             <><Shield className="h-3.5 w-3.5" />مسدود کردن</>
                           )}
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-rose-500 hover:text-rose-600 hover:bg-rose-50"
+                          onClick={() => setDeleteTarget(user)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                         <Button size="sm" variant="ghost" asChild>
                           <Link href={`/admin/users/${user.id}`}>
                             <ChevronLeft className="h-4 w-4" />
@@ -145,6 +158,15 @@ export default function AdminUsersPage() {
             بعدی
           </Button>
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteUserDialog
+          user={{ id: deleteTarget.id, phone: deleteTarget.phone, name: deleteTarget.name }}
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+          onDeleted={() => { setDeleteTarget(null); void load(); }}
+        />
       )}
     </div>
   );
