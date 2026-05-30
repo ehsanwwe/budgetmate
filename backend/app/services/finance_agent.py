@@ -108,7 +108,12 @@ def _multiple_goals_reply(goals: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-async def handle_finance_message(message: str, user: User, db: Session) -> str:
+async def handle_finance_message(
+    message: str,
+    user: User,
+    db: Session,
+    history: Optional[list[dict]] = None,
+) -> str:
     context = build_finance_context(user, db)
     clean = _clean(message)
     amount = parse_money(message)
@@ -182,4 +187,4 @@ async def handle_finance_message(message: str, user: User, db: Session) -> str:
     # as needed via JSON action blocks processed by ai_actions.process_ai_reply
 
     chat_mode = getattr(user, "chat_mode", "normal") or "normal"
-    return await get_ai_reply(message, context, chat_mode)
+    return await get_ai_reply(message, context, chat_mode, history=history)

@@ -26,6 +26,18 @@ def _save_message(db: Session, user_id: int, role: MessageRole, content: str) ->
     return msg
 
 
+def _get_history(db: Session, user_id: int, limit: int = 20) -> list[dict]:
+    """Fetch last `limit` messages ordered oldest-first, formatted for the AI provider."""
+    messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [{"role": m.role.value, "content": m.content} for m in reversed(messages)]
+
+
 @router.post("/message", response_model=ChatReply)
 async def send_message(
     body: ChatMessageIn,
@@ -37,8 +49,9 @@ async def send_message(
     if wallet.balance_tokens <= 0 or wallet.balance_tokens < est_prompt:
         return ChatReply(reply=INSUFFICIENT_TOKENS_MESSAGE)
 
+    history = _get_history(db, current_user.id)
     _save_message(db, current_user.id, MessageRole.user, body.content)
-    raw_reply = await handle_finance_message(body.content, current_user, db)
+    raw_reply = await handle_finance_message(body.content, current_user, db, history=history)
     reply = process_ai_reply(raw_reply, db, current_user)
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 
@@ -71,8 +84,10 @@ async def stream_message(
             yield "data: [DONE]\n\n"
         return StreamingResponse(insufficient(), media_type="text/event-stream")
 
+    history = _get_history(db, current_user.id)
+
     async def event_generator():
-        raw_reply = await handle_finance_message(user_content, current_user, db)
+        raw_reply = await handle_finance_message(user_content, current_user, db, history=history)
         # Stream the raw text word-by-word so the frontend can show progress
         for word in raw_reply.split(" "):
             yield f"data: {json.dumps({'chunk': word + ' '}, ensure_ascii=False)}\n\n"
@@ -140,8 +155,9 @@ async def voice_message(
     if wallet.balance_tokens <= 0 or wallet.balance_tokens < est_prompt:
         return {"transcript": transcript, "reply": INSUFFICIENT_TOKENS_MESSAGE, "message_id": None}
 
+    history = _get_history(db, current_user.id)
     _save_message(db, current_user.id, MessageRole.user, transcript)
-    raw_reply = await handle_finance_message(transcript, current_user, db)
+    raw_reply = await handle_finance_message(transcript, current_user, db, history=history)
     reply = process_ai_reply(raw_reply, db, current_user)
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 

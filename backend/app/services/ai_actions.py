@@ -24,6 +24,7 @@ _REQUIRED_FIELDS: dict[str, list[str]] = {
     "create_transaction": ["amount", "type", "category"],
     "create_goal": ["title", "target_amount"],
     "set_budget": ["amount"],
+    "set_income": ["amount"],
 }
 
 
@@ -192,6 +193,15 @@ def execute_action(action: dict, db: Session, user: User) -> dict:
                 db.add(budget)
             db.commit()
             return {"ok": True, "confirmation": f"✅ بودجه ماهانه روی {_fmt(amount)} تنظیم شد."}
+
+        if kind == "set_income":
+            amount = int(action.get("amount", 0))
+            if amount < 1_000_000:
+                logger.warning("Rejected set_income: amount=%s is below 1_000_000", amount)
+                return {"ok": False, "reason": f"مبلغ درآمد {amount} تومان معقول نیست. حداقل ۱٬۰۰۰٬۰۰۰ تومان لازم است."}
+            user.monthly_income = amount
+            db.commit()
+            return {"ok": True, "confirmation": f"✅ درآمد ماهانه‌ات روی {_fmt(amount)} ثبت شد."}
 
         return {"ok": False, "reason": f"action ناشناخته: {kind}"}
 

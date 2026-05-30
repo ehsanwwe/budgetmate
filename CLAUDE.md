@@ -119,6 +119,9 @@ Auth store fields: `token`, `user`, `adminToken`, `needsProfile`, `onboardingCom
 - [x] Chat empty state: hero greeting (yellow smiley + name), suggested prompt chips, budget onboarding card, minimal header
 - [x] AI chat improvements: behavior rules, tone modes, auto-execute actions from chat
 - [x] AI action safety: no actions fired for advice/hypothetical questions; backend rejects transactions < 1000 toman, goals < 100k, budgets < 100k; failed actions logged silently (never shown to user)
+- [x] AI chat memory: last 20 messages sent as history to AI provider on every /chat/message, /chat/stream, /chat/voice — AI no longer forgets prior turns
+- [x] AI income context: monthly_income field on User (migration 005); set_income action saves exact income; income range used for range-based answers (e.g., "20% of 40-80M = 8-16M") with fallback to exact when saved
+- [x] AI conversation rules: explicit rules to use prior answers, never re-ask answered questions, use range before asking for exact number
 - [x] Admin panel: auth isolation, delete user endpoint + dialog, chat history endpoint + timeline, extended user detail with tabs
 
 ## What's Left

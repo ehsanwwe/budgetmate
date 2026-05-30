@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, Integer, String
 from app.db import Base
 
 
@@ -26,6 +26,7 @@ class User(Base):
     onboarding_completed = Column(Boolean, default=False)
     onboarding_completed_at = Column(DateTime, nullable=True)
     chat_mode = Column(String, default="normal")
+    monthly_income = Column(BigInteger, nullable=True, default=None)
 
     @property
     def display_name(self) -> str | None:
