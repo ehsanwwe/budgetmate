@@ -16,10 +16,14 @@ class UserOut(BaseModel):
     language: str
     created_at: datetime
     family_name: Optional[str] = None
+    birthdate: Optional[DateType] = None
     province: Optional[str] = None
     city: Optional[str] = None
     income_range: Optional[str] = None
+    agreement_accepted_at: Optional[datetime] = None
+    agreement_version: Optional[str] = None
     onboarding_completed: bool = False
+    onboarding_completed_at: Optional[datetime] = None
     chat_mode: str = "normal"
 
     model_config = {"from_attributes": True}

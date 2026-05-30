@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -8,8 +8,11 @@ from app.core.auth import get_current_admin
 from app.models.admin import AdminUser
 from app.models.user import User
 from app.models.transaction import Transaction
+from app.models.budget import Budget
+from app.models.goal import Goal
 from app.models.chat import ChatMessage
 from app.models.activity import ActivityLog
+from app.models.billing import TokenUsageLog, TokenPurchase, UserSubscription, TokenWallet
 from app.schemas.user import UserOut
 from pydantic import BaseModel
 
@@ -123,6 +126,75 @@ def unblock_user(
     db.add(log)
     db.commit()
     return {"message": "مسدودیت کاربر رفع شد"}
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    phone = user.phone
+    log = ActivityLog(
+        user_id=None,
+        action="admin_deleted_user",
+        meta={"target_user_id": user_id, "target_phone": phone, "by_admin": admin.username},
+    )
+    db.add(log)
+    db.query(TokenUsageLog).filter(TokenUsageLog.user_id == user_id).delete()
+    db.query(TokenPurchase).filter(TokenPurchase.user_id == user_id).delete()
+    db.query(UserSubscription).filter(UserSubscription.user_id == user_id).delete()
+    db.query(TokenWallet).filter(TokenWallet.user_id == user_id).delete()
+    db.query(ChatMessage).filter(ChatMessage.user_id == user_id).delete()
+    db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+    db.query(Budget).filter(Budget.user_id == user_id).delete()
+    db.query(Goal).filter(Goal.user_id == user_id).delete()
+    db.query(ActivityLog).filter(ActivityLog.user_id == user_id).delete()
+    db.query(User).filter(User.id == user_id).delete()
+    db.commit()
+    return {"deleted": True, "user_id": user_id}
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatHistoryResponse(BaseModel):
+    items: List[ChatMessageOut]
+    page: int
+    page_size: int
+    total: int
+
+
+@router.get("/users/{user_id}/chats", response_model=ChatHistoryResponse)
+def get_user_chats(
+    user_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    admin: AdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if not db.query(User).filter(User.id == user_id).first():
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+    total = db.query(ChatMessage).filter(ChatMessage.user_id == user_id).count()
+    messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.user_id == user_id)
+        .order_by(ChatMessage.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    messages.reverse()
+    return ChatHistoryResponse(items=messages, page=page, page_size=page_size, total=total)
 
 
 class ActivityOut(BaseModel):
