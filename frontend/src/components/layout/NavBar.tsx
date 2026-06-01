@@ -52,7 +52,7 @@ export default function NavBar() {
             <Wallet className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="font-bold text-sm">بادجت‌میت</p>
+            <p className="font-bold text-sm">جیبیار</p>
             <p className="text-xs text-muted-foreground">{displayName}</p>
           </div>
         </div>

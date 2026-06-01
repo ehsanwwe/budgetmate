@@ -51,7 +51,7 @@ export default function LoginWelcomePage() {
           className="space-y-3"
         >
           <h1 className="text-4xl font-[800] text-[#2d1812] leading-tight tracking-tight">
-            به بادجت‌میت
+            به جیبیار
             <br />
             خوش اومدی
           </h1>
@@ -102,13 +102,13 @@ export default function LoginWelcomePage() {
             dir="rtl"
           >
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-[#2d1812]">درباره بادجت‌میت</h2>
+              <h2 className="text-xl font-bold text-[#2d1812]">درباره جیبیار</h2>
               <button onClick={() => setShowInfo(false)} className="p-1">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
             <div className="space-y-3 text-gray-600 text-sm leading-relaxed">
-              <p>بادجت‌میت یک دستیار مالی هوشمند فارسی است که به شما کمک می‌کند:</p>
+              <p>جیبیار یک دستیار مالی هوشمند فارسی است که به شما کمک می‌کند:</p>
               <ul className="space-y-2 list-none">
                 <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> بودجه ماهانه خود را مدیریت کنید</li>
                 <li className="flex items-start gap-2"><span className="text-emerald-500 mt-0.5">✓</span> هزینه‌های خود را دسته‌بندی و پیگیری کنید</li>

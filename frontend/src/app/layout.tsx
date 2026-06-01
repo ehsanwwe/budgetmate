@@ -3,7 +3,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "بادجت‌میت",
+  title: "جیبیار",
   description: "مدیریت مالی شخصی",
 };
 

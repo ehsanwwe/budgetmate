@@ -42,7 +42,7 @@ export default function AdminLoginPage() {
             </div>
           </div>
           <CardTitle>پنل مدیریت</CardTitle>
-          <CardDescription>ورود به بخش مدیریت بادجت‌میت</CardDescription>
+          <CardDescription>ورود به بخش مدیریت جیبیار</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">

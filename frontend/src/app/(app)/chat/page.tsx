@@ -368,7 +368,7 @@ export default function ChatPage() {
           </div>
           <div>
             <p className="font-bold text-[#2d1812] text-sm">دستیار مالی</p>
-            <p className="text-[11px] text-gray-400">بادجت‌میت · آنلاین</p>
+            <p className="text-[11px] text-gray-400">جیبیار · آنلاین</p>
           </div>
         </div>
         <button onClick={clearHistory} className="p-2 rounded-full hover:bg-gray-100 transition-colors">

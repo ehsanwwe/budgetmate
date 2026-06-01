@@ -92,7 +92,7 @@ export default function ChatEmptyState({
               transition={{ duration: 0.4, delay: 0.34 }}
               className="max-w-xs text-sm leading-relaxed text-gray-600 sm:text-base"
           >
-            من بادجت‌میتم،{" "}
+            من جیبیارم،{" "}
             <span className="text-emerald-500 font-semibold">دستیار مالی هوشمندت</span>.
             <br />
             هر سوالی درباره بودجه، خرج‌ها یا پس‌اندازت داری بپرس.
