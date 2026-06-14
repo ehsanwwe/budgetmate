@@ -19,6 +19,12 @@ class AgentOperationType(str, Enum):
     no_op = "no_op"
 
 
+class SourceScope(str, Enum):
+    current_message = "current_message"
+    pending_intent = "pending_intent"
+    history_context = "history_context"
+
+
 class AgentPlanStep(StrictModel):
     step_id: str
     operation_type: AgentOperationType
@@ -32,6 +38,7 @@ class AgentPlanStep(StrictModel):
     requires_result_before_next_step: bool = False
     user_visible: bool = False
     confidence: float = Field(ge=0, le=1, default=0)
+    source_scope: SourceScope = SourceScope.current_message
 
 
 class AgentPlan(StrictModel):
@@ -57,6 +64,8 @@ class AgentExecutionResult(StrictModel):
     summary: Optional[str] = None
     rejected_reason: Optional[str] = None
     error: Optional[str] = None
+    skipped_duplicate: bool = False
+    operation_fingerprint: Optional[str] = None
 
 
 class AgentFinalResponse(StrictModel):

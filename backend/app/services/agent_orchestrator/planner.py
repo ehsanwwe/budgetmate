@@ -30,7 +30,8 @@ Return only strict JSON matching this schema:
       "result_usage": "how the result will be used or null",
       "requires_result_before_next_step": false,
       "user_visible": false,
-      "confidence": 0.0
+      "confidence": 0.0,
+      "source_scope": "current_message|pending_intent|history_context"
     }
   ],
   "final_response_instruction": "how to answer after DB results are available",
@@ -38,9 +39,64 @@ Return only strict JSON matching this schema:
   "clarification_question": null,
   "confidence": 0.0
 }
+
+CRITICAL RULE — CURRENT-TURN EXECUTION GUARD:
+Chat history is provided as CONTEXT ONLY. You MUST NOT create INSERT or UPDATE operations based on anything in the conversation history.
+You may create INSERT or UPDATE operations ONLY for the CURRENT USER MESSAGE or an active pending_intent.
+A question in the current message NEVER triggers a write. A write triggered only because a past assistant message mentioned it MUST NOT be repeated.
+If the current message is a question (asks for information, lists, deadlines, or counts), plan only SELECT steps.
+If the current message is a follow-up amount that completes a pending purchase/commitment, use source_scope="pending_intent" and create the write.
+
+source_scope field MUST be set for every step:
+- source_scope="current_message" → step is needed because of what the CURRENT user message says
+- source_scope="pending_intent" → step completes a pending clarification from a prior turn (only valid when current message is clearly a follow-up value)
+- source_scope="history_context" → step is informational SELECT for understanding context; NEVER use history_context for INSERT or UPDATE
+
+SEMANTIC CLASSIFICATION — goal vs future_commitment vs transaction:
+Use EXACTLY one of these based on the user's wording:
+
+TRANSACTION (already happened):
+  Use when user says money was already paid/spent or received:
+  - خریدم، دادم، پرداخت کردم، هزینه کردم، واریز کردم (outgoing and known)
+  - درآمد داشتم، پولش اومد، گرفتم، حقوق گرفتم (income)
+  - INSERT INTO transactions
+
+FUTURE COMMITMENT (binding obligation exists):
+  Use when there is a scheduled required payment the user is already committed to:
+  - چک دارم، قسط دارم، باید کرایه/اجاره بدهم، بدهی دارم
+  - User already registered/purchased and remaining balance is due
+  - Contract/order/payment obligation exists
+  - INSERT INTO future_commitments, status="pending"
+
+GOAL (desired future purchase, no binding obligation):
+  Use when user WANTS to buy or save for something but has NOT yet committed:
+  - میخوام بخرم، قصد دارم، میخوام پس‌انداز کنم، هدف بزار برای
+  - تا آخر خرداد میخوام ماشین لباسشویی بخرم
+  - INSERT INTO goals, status="active"
+
+EXAMPLES (must classify correctly):
+  "چک دارم ماه بعد ۵۰ میلیون" → future_commitments
+  "باید کرایه خونه بدم ماه بعد ۲۰ میلیون" → future_commitments
+  "ماشین لباسشویی میخام بخرم تا آخر خرداد ۴۷ میلیون" → GOAL not commitment
+  "رینگ اسپورت میخام بخرم ماه آینده ۲۰۰ میلیون" → GOAL not commitment
+  "تور ثبت‌نام کردم، الان ۲۰ میلیون دادم، ۴۰ میلیونش ماه بعده" → transaction (20M) + future_commitment (40M)
+  "کادو خریدم ۲۵ میلیون" → transaction
+
+GOAL UPDATE RULE:
+When current message requests a goal deadline change:
+  1. SELECT goals first
+  2. Match by title from actual rows (do not invent ids)
+  3. If match found: UPDATE deadline only; do not add or repeat text from prior turns in final_response_hint
+  4. Re-read the updated row; final_response_hint must show the NEW deadline from the re-read row only
+  If current message only ASKS about a goal (no update intent): SELECT only, no UPDATE
+
+RESPONSE INTEGRITY:
+  - final_response_hint must contain ONLY the answer to the current message
+  - Do NOT append previous operation confirmations to the current answer
+  - Do NOT copy or repeat any sentence from the conversation history into final_response_hint
+
 Use SQL only as a proposal. The backend validates and executes it.
 Do not include markdown, comments, prose, SQL fences, or hidden reasoning.
-You are responsible for all financial intent detection. There are no backend keyword shortcuts.
 Never include user_id in SQL, WHERE clauses, selected columns, or params. The backend scopes every user-owned table to the authenticated user and will reject any user_id from you.
 For questions asking both income and expense, create separate SELECT steps for both totals.
 For transaction creation, SELECT real categories first when category choice is needed, then choose category_id only from returned rows in the next iteration.
@@ -53,12 +109,10 @@ For totals, grouped top categories, recent transactions, budgets, goals, memorie
 If Personal CFO tables are available, you may propose INSERTs for finance-relevant memories, facts, insights, warnings, or decision logs. Do not store secrets or unrelated personal details.
 Goals are first-class financial objects. Before updating, archiving, or evaluating a named goal, SELECT the current user's goals and choose from actual rows. If a required amount is missing for goal creation, ask a specific clarification instead of generic failure.
 For goal lists, SELECT active goals and answer with title, target_amount, current_amount, remaining amount, deadline, and progress when available.
-For a named goal timing question, SELECT goals plus budget/current cashflow/future commitments when useful, then answer from actual rows. If no matching goal exists, ask whether to create it.
-For a named goal update, SELECT goals first. If one real row confidently matches the user's wording, plan a safe UPDATE by id only. If multiple rows match, ask clarification; if none match, say no matching goal was found and ask whether to create it.
+For a named goal timing question, SELECT goals first, then answer from actual rows including the deadline column. No UPDATE unless the user explicitly requests a change.
+For advice questions (how to reduce costs, analysis, tips), SELECT real data (transactions by category, budgets, goals, future_commitments) and provide grounded advice. Do not return generic failure.
 Future commitments are first-class obligations. When a message includes a current payment plus a later unpaid part, plan both the current transaction and a pending future_commitments INSERT.
 For direct questions about goals, future plans, next-month costs, or costs until next year, SELECT goals, future_commitments, financial_facts, and financial_memories as needed and answer from those real rows. Never generic-fail normal Personal CFO questions.
-If the user says they want to buy something in a future period, treat it as a planned purchase/future commitment. Ask for amount if missing; when the next user message only provides an amount, use chat history to complete the pending future purchase and INSERT future_commitments, not transactions.
-If a message mixes a completed small purchase with an incomplete transfer/loan/gift context, record only the completed purchase and ask a specific clarification for the transfer amount and financial nature.
 For follow-up reactions such as "is my situation bad?", use prior conversation plus current context. You may answer with final_response_hint or SELECT current budget/transactions/commitments first; do not return a safety failure.
 For emotional spending, sadness spending, party/event budgets, gifts, tours, laptop/home/car purchase decisions, or "how much room do I have" questions, SELECT budgets, current-month income/expenses, active goals, future commitments, and relevant CFO context before final advice.
 Do not encourage emotional spending. Suggest a small grounded cap or cooling-off rule when the user describes spending to change mood. Store a behavior insight or memory only when it is finance-relevant.
@@ -84,17 +138,47 @@ class AgentPlanner:
                 "content": "Current local time context uses APP_TIMEZONE. Use the provided current_gregorian_date and date phrases in params; backend stores dates safely.",
             },
         ]
-        for item in (history or [])[-8:]:
-            if item.get("role") in {"user", "assistant"} and item.get("content"):
-                messages.append({"role": item["role"], "content": str(item["content"])[:1000]})
+
+        # History passed as a labeled system block — context only, must NOT re-execute
+        if history:
+            history_lines = []
+            for item in history[-8:]:
+                if item.get("role") in {"user", "assistant"} and item.get("content"):
+                    role_label = "USER" if item["role"] == "user" else "ASSISTANT"
+                    truncated = str(item["content"])[:600]
+                    history_lines.append(f"[{role_label}]: {truncated}")
+            if history_lines:
+                history_block = "\n".join(history_lines)
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "CONVERSATION HISTORY — FOR CONTEXT ONLY. "
+                            "Do NOT create INSERT or UPDATE operations from this history. "
+                            "Use it only to resolve references in the CURRENT message below.\n\n"
+                            + history_block
+                        ),
+                    }
+                )
+
         if execution_results:
             messages.append(
                 {
                     "role": "system",
-                    "content": "Validated execution results:\n" + json.dumps(execution_results, ensure_ascii=False, default=str),
+                    "content": "Validated execution results from current turn:\n" + json.dumps(execution_results, ensure_ascii=False, default=str),
                 }
             )
-        messages.append({"role": "user", "content": user_message})
+
+        # Current message marked explicitly so LLM knows this is the only write-triggering source
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "CURRENT USER MESSAGE (only this message may trigger new INSERT/UPDATE operations):\n"
+                    + user_message
+                ),
+            }
+        )
 
         try:
             raw = await get_ai_chat_completion(messages, require_json=True)
