@@ -79,6 +79,15 @@ Goal-aware decision phase:
 - Future obligations such as an unpaid later installment are stored in `future_commitments` with `status='pending'` and included in future budget analysis.
 - High-value purchase responses should mention budget/goal/commitment tradeoffs and must not blindly approve the purchase.
 
+Phase 5.5 context completion:
+
+- The compact CFO context now includes active goals, future commitments, next-month commitments, commitments until next year, financial facts, memories, behavior insights, persona, warnings, and a current-month budget summary.
+- Direct questions such as "what goals do I have?", "what plans do I have next year?", and "what costs do I have next month?" should be answered through planner-proposed SELECTs over goals, `future_commitments`, `financial_facts`, and `financial_memories`.
+- Planned future purchases are not current transactions. The planner should ask for an amount if missing and use chat history to connect a follow-up amount to the pending planned purchase.
+- Mixed events should only execute complete operations. For example, a bought pen can be recorded while an incomplete friend transfer remains a specific clarification.
+- `financial_personas`, `financial_memories`, `behavior_insights`, `financial_facts`, and `financial_warnings` have limited user-scoped UPDATE policies only for safe status/profile fields.
+- The frontend exposes `/future-commitments` and the chat UI aligns user messages to the right and assistant messages to the left while preserving RTL text direction.
+
 Manual Phase 3 checks:
 
 - `هفته پیش یک پروژه زدم که پولش سه روز پیش اومد چهارده میلیون تومان بود`

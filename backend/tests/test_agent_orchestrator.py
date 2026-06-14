@@ -13,7 +13,7 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.db import Base, get_db
 from app.main import app
-from app.models import AdminUser, AgentSqlAuditLog, BehaviorInsight, Budget, Category, FinancialFact, FutureCommitment, Goal, Transaction, User
+from app.models import AdminUser, AgentSqlAuditLog, BehaviorInsight, Budget, Category, FinancialFact, FinancialMemory, FutureCommitment, Goal, Transaction, User
 from app.models.transaction import TransactionType
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.db_world import build_db_world
@@ -69,6 +69,16 @@ class SequencePlanner:
         return AgentPlan(intent="final", final_response_hint="ثبت شد.")
 
 
+class RecordingPlanner(SequencePlanner):
+    def __init__(self, plans):
+        super().__init__(plans)
+        self.kwargs = []
+
+    async def plan(self, *args, **kwargs):
+        self.kwargs.append(kwargs)
+        return await super().plan(*args, **kwargs)
+
+
 def test_db_world_exposes_only_allowed_tables_and_columns(db):
     world = build_db_world(db.bind)
     tables = {table.table_name: table for table in world.tables}
@@ -86,6 +96,10 @@ def test_db_world_exposes_only_allowed_tables_and_columns(db):
     assert "future_commitments" in tables
     commitment_ops = {op.value for op in tables["future_commitments"].allowed_operations}
     assert {"select", "insert", "update"}.issubset(commitment_ops)
+    fact_ops = {op.value for op in tables["financial_facts"].allowed_operations}
+    memory_ops = {op.value for op in tables["financial_memories"].allowed_operations}
+    assert {"select", "insert", "update"}.issubset(fact_ops)
+    assert {"select", "insert", "update"}.issubset(memory_ops)
 
 
 def test_openai_provider_is_only_active_provider(monkeypatch):
@@ -514,6 +528,140 @@ def test_future_commitments_are_in_agent_context(db):
 
     context = build_agent_context(user(db), db)
     assert context["future_commitments"][0]["amount"] == 50_000_000
+    assert context["personal_cfo"]["future_commitments"][0]["amount"] == 50_000_000
+    assert "commitments_until_next_year" in context["personal_cfo"]
+
+
+def test_future_plan_question_can_select_goals_commitments_facts_and_memories(db):
+    db.add_all(
+        [
+            Goal(user_id=1, title="laptop", target_amount=80_000_000, current_amount=20_000_000, is_active=True),
+            FutureCommitment(user_id=1, title="tour balance", amount=40_000_000, status="pending"),
+            FinancialFact(user_id=1, fact_type="planned_purchase", subject="ring", value_json={"amount": 12_000_000}),
+            FinancialMemory(user_id=1, memory_type="planned_purchase", title="car ring", content_json={"period": "next_month"}),
+        ]
+    )
+    db.commit()
+    plan = AgentPlan(
+        intent="future_plans_question",
+        requires_db=True,
+        steps=[
+            AgentPlanStep(
+                step_id="goals",
+                operation_type=AgentOperationType.select,
+                purpose="read active goals for future plan answer",
+                table_name="goals",
+                sql="SELECT id, title, target_amount, current_amount, deadline, status, is_active FROM goals WHERE is_active = :active",
+                params={"active": True},
+            ),
+            AgentPlanStep(
+                step_id="commitments",
+                operation_type=AgentOperationType.select,
+                purpose="read pending future commitments",
+                table_name="future_commitments",
+                sql="SELECT id, title, amount, due_date, due_month, status FROM future_commitments WHERE status = :status",
+                params={"status": "pending"},
+            ),
+            AgentPlanStep(
+                step_id="facts",
+                operation_type=AgentOperationType.select,
+                purpose="read planned-purchase facts",
+                table_name="financial_facts",
+                sql="SELECT id, fact_type, subject, value_json, confidence, valid_from, valid_to, is_active FROM financial_facts WHERE is_active = :active",
+                params={"active": True},
+            ),
+            AgentPlanStep(
+                step_id="memories",
+                operation_type=AgentOperationType.select,
+                purpose="read planned-purchase memories",
+                table_name="financial_memories",
+                sql="SELECT id, memory_type, title, content_json, confidence, is_active FROM financial_memories WHERE is_active = :active",
+                params={"active": True},
+            ),
+        ],
+    )
+    final_plan = AgentPlan(intent="final", final_response_hint="یک هدف لپتاپ، تعهد تور، و برنامه خرید رینگ در داده‌های شما ثبت شده است.")
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "future plans"))
+    assert "لپتاپ" in result.message
+    assert "تور" in result.message
+    assert db.query(AgentSqlAuditLog).filter(AgentSqlAuditLog.operation_type == "select").count() == 4
+
+
+def test_planned_purchase_followup_creates_future_commitment_not_transaction(db):
+    first_plan = AgentPlan(
+        intent="planned_purchase_missing_amount",
+        requires_db=False,
+        clarification_question="برای این خرید آینده چه مبلغی در نظر داری؟",
+    )
+    first = asyncio.run(AgentOrchestrator(planner=SequencePlanner([first_plan])).run(db, user(db), "planned purchase next month"))
+    assert "چه مبلغ" in first.message
+
+    insert_plan = AgentPlan(
+        intent="planned_purchase_amount_followup",
+        requires_db=True,
+        steps=[
+            AgentPlanStep(
+                step_id="commit",
+                operation_type=AgentOperationType.insert,
+                purpose="create future commitment from follow-up amount and prior planned purchase context",
+                table_name="future_commitments",
+                sql="INSERT INTO future_commitments (title, amount, due_date, description, status, source) VALUES (:title, :amount, :due_date, :description, :status, :source)",
+                params={"title": "car ring planned purchase", "amount": 15_000_000, "due_date": "ماه بعد", "description": "planned purchase from chat follow-up", "status": "pending", "source": "chat"},
+            )
+        ],
+    )
+    planner = RecordingPlanner([insert_plan, AgentPlan(intent="final", final_response_hint="تعهد آینده خرید رینگ برای ماه بعد ثبت شد.")])
+    history = [
+        {"role": "user", "content": "I want to buy car rings next month"},
+        {"role": "assistant", "content": "What amount do you plan for it?"},
+    ]
+    result = asyncio.run(AgentOrchestrator(planner=planner).run(db, user(db), "15 million toman", history=history))
+    assert "تعهد آینده" in result.message
+    assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1, FutureCommitment.amount == 15_000_000).count() == 1
+    assert db.query(Transaction).filter(Transaction.user_id == 1).count() == 0
+    assert planner.kwargs[0]["history"] == history
+
+
+def test_mixed_pen_purchase_and_incomplete_transfer_records_only_pen(db):
+    plan = AgentPlan(
+        intent="mixed_purchase_and_transfer_context",
+        requires_db=True,
+        steps=[
+            AgentPlanStep(
+                step_id="tx",
+                operation_type=AgentOperationType.insert,
+                purpose="record completed pen expense only",
+                table_name="transactions",
+                sql="INSERT INTO transactions (amount, type, description, date) VALUES (:amount, :type, :description, :date)",
+                params={"amount": 50_000, "type": "expense", "description": "pen", "date": local_today().isoformat()},
+            ),
+            AgentPlanStep(
+                step_id="fact",
+                operation_type=AgentOperationType.insert,
+                purpose="store incomplete friend transfer context for clarification",
+                table_name="financial_facts",
+                sql="INSERT INTO financial_facts (fact_type, subject, value_json, confidence) VALUES (:fact_type, :subject, :value_json, :confidence)",
+                params={"fact_type": "friend_transfer_context", "subject": "friend transfer", "value_json": {"needs_amount": True, "needs_type": True}, "confidence": 0.7},
+            ),
+        ],
+    )
+    final_plan = AgentPlan(intent="final", final_response_hint="هزینه خودکار ثبت شد. برای واریز به دوستت هنوز مبلغ و نوع آن مشخص نیست؛ هدیه، قرض یا بازپرداخت است؟")
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "mixed event"))
+    assert "خودکار" in result.message
+    assert "هدیه" in result.message
+    assert db.query(Transaction).filter(Transaction.user_id == 1, Transaction.amount == 50_000).count() == 1
+    assert db.query(FinancialFact).filter(FinancialFact.user_id == 1, FinancialFact.fact_type == "friend_transfer_context").count() == 1
+
+
+def test_personal_cfo_followup_can_answer_without_generic_failure(db):
+    plan = AgentPlan(
+        intent="financial_status_followup",
+        requires_db=False,
+        final_response_hint="اوضاع نیاز به کنترل دارد، اما قابل مدیریت است. چون بودجه منفی شده، فعلا خرج‌های اختیاری را کم کن و تعهدات ماه بعد را نگه دار.",
+    )
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(db, user(db), "status follow-up"))
+    assert "قابل مدیریت" in result.message
+    assert "نتوانستم" not in result.message
 
 
 @pytest.mark.parametrize(

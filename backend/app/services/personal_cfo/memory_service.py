@@ -20,6 +20,7 @@ ALLOWED_MEMORY_TYPES = {
     "risk_note",
     "project_income",
     "future_commitment",
+    "planned_purchase",
 }
 
 

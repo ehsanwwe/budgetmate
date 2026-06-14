@@ -39,7 +39,11 @@ export default function UserChatHistory({ userId }: { userId: string | number })
     }
   }, [userId, page]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void load();
+    });
+  }, [load]);
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1;
 

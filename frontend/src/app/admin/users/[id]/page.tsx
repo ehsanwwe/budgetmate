@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { adminApi } from "@/lib/api";
@@ -49,7 +49,7 @@ export default function UserDetailPage() {
   const [blockLoading, setBlockLoading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  async function loadUser() {
+  const loadUser = useCallback(async () => {
     try {
       const res = await adminApi.get<UserDetail>(`/admin/users/${id}`);
       setUser(res.data);
@@ -58,9 +58,13 @@ export default function UserDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void loadUser(); }, [id]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadUser();
+    });
+  }, [loadUser]);
 
   async function toggleBlock() {
     if (!user) return;

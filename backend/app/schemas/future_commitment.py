@@ -51,3 +51,6 @@ class FutureCommitmentOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+FutureCommitmentRead = FutureCommitmentOut

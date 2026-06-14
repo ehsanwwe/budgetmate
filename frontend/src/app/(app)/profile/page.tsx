@@ -142,21 +142,23 @@ export default function ProfilePage() {
   }, [setUser]);
 
   useEffect(() => {
-    if (!province) {
-      setCities([]);
-      setCity("");
-      return;
-    }
+    queueMicrotask(() => {
+      if (!province) {
+        setCities([]);
+        setCity("");
+        return;
+      }
 
-    const selectedCity = city;
-    api
-      .get(`/iran/cities?province=${encodeURIComponent(province)}`)
-      .then((res) => {
-        const rows = res.data.cities || [];
-        setCities(rows);
-        setCity(selectedCity && rows.includes(selectedCity) ? selectedCity : "");
-      })
-      .catch(() => setCities([]));
+      const selectedCity = city;
+      api
+        .get(`/iran/cities?province=${encodeURIComponent(province)}`)
+        .then((res) => {
+          const rows = res.data.cities || [];
+          setCities(rows);
+          setCity(selectedCity && rows.includes(selectedCity) ? selectedCity : "");
+        })
+        .catch(() => setCities([]));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [province]);
 

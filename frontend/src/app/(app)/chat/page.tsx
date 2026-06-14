@@ -28,20 +28,26 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={`flex gap-2 ${isUser ? "flex-row-reverse" : ""}`}
+      className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
+      dir="ltr"
     >
-      <Avatar className="h-7 w-7 shrink-0">
-        <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
-          {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-        </AvatarFallback>
-      </Avatar>
-      <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-        isUser
-          ? "bg-[#2d1812] text-white rounded-tr-sm"
-          : "bg-white text-[#2d1812] rounded-tl-sm shadow-sm border border-gray-100"
-      }`}>
-        <SimpleMarkdown text={message.content} />
-        {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-current animate-pulse ms-0.5 align-text-bottom" />}
+      <div className={`flex max-w-[86%] gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+        <Avatar className="h-7 w-7 shrink-0">
+          <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
+            {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+          </AvatarFallback>
+        </Avatar>
+        <div
+          dir="rtl"
+          className={`rounded-2xl px-4 py-2.5 text-right text-sm leading-relaxed ${
+            isUser
+              ? "bg-[#2d1812] text-white rounded-tr-sm"
+              : "bg-white text-[#2d1812] rounded-tl-sm shadow-sm border border-gray-100"
+          }`}
+        >
+          <SimpleMarkdown text={message.content} />
+          {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-current animate-pulse ms-0.5 align-text-bottom" />}
+        </div>
       </div>
     </motion.div>
   );
@@ -385,14 +391,16 @@ export default function ChatPage() {
           <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
         )}
         {streaming && !streamingText && (
-          <div className="flex gap-2">
-            <Avatar className="h-7 w-7 shrink-0">
-              <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
-            </Avatar>
-            <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
-              {[0, 150, 300].map((d) => (
-                <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-              ))}
+          <div className="flex w-full justify-start" dir="ltr">
+            <div className="flex gap-2">
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
+              </Avatar>
+              <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
+                {[0, 150, 300].map((d) => (
+                  <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                ))}
+              </div>
             </div>
           </div>
         )}

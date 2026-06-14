@@ -62,18 +62,20 @@ export default function OnboardingProfilePage() {
   }, [token, router]);
 
   useEffect(() => {
-    if (!province) {
-      setCities([]);
-      setCity("");
-      return;
-    }
-    api
-        .get(`/iran/cities?province=${encodeURIComponent(province)}`)
-        .then((r) => {
-          setCities(r.data.cities);
-          setCity("");
-        })
-        .catch(() => {});
+    queueMicrotask(() => {
+      if (!province) {
+        setCities([]);
+        setCity("");
+        return;
+      }
+      api
+          .get(`/iran/cities?province=${encodeURIComponent(province)}`)
+          .then((r) => {
+            setCities(r.data.cities);
+            setCity("");
+          })
+          .catch(() => {});
+    });
   }, [province]);
 
   function jalaliToGregorian(jy: number, jm: number, jd: number): string {

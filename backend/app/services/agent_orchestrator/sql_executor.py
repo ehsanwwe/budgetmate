@@ -12,7 +12,7 @@ from app.models.agent_audit import AgentSqlAuditLog
 from app.models.category import Category
 from app.models.future_commitment import FutureCommitment
 from app.models.goal import Goal
-from app.models.personal_cfo import FinancialDecisionLog, FinancialFact, FinancialMemory, FinancialWarning
+from app.models.personal_cfo import BehaviorInsight, FinancialDecisionLog, FinancialFact, FinancialMemory, FinancialPersona, FinancialWarning
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
 from app.services.agent_orchestrator.date_utils import parse_relative_date
@@ -165,6 +165,16 @@ class SqlExecutor:
             return self._update_goal(db, user, row_id, assignments, params)
         if table == "future_commitments":
             return self._update_future_commitment(db, user, row_id, assignments, params)
+        if table == "financial_personas":
+            return self._update_persona(db, user, row_id, assignments, params)
+        if table == "financial_memories":
+            return self._update_memory(db, user, row_id, assignments, params)
+        if table == "behavior_insights":
+            return self._update_behavior_insight(db, user, row_id, assignments, params)
+        if table == "financial_facts":
+            return self._update_fact(db, user, row_id, assignments, params)
+        if table == "financial_warnings":
+            return self._update_warning(db, user, row_id, assignments, params)
         raise ValueError("UPDATE on this table is not enabled")
 
     def _insert_transaction(self, db: Session, user: User, params: dict[str, Any]) -> int:
@@ -294,6 +304,83 @@ class SqlExecutor:
                 row.metadata_json = self._json_param(value)
             else:
                 setattr(row, column, str(value)[:1000] if value is not None else None)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_persona(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(FinancialPersona).filter(FinancialPersona.id == row_id, FinancialPersona.user_id == user.id).first()
+        if not row:
+            raise ValueError("persona is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column == "discipline_score":
+                row.discipline_score = self._confidence(value)
+            elif column == "confidence":
+                row.confidence = self._confidence(value)
+            elif column in {"emotional_spending_triggers_json", "notes_json"}:
+                setattr(row, column, self._json_param(value))
+            else:
+                setattr(row, column, str(value)[:200] if value is not None else None)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_memory(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(FinancialMemory).filter(FinancialMemory.id == row_id, FinancialMemory.user_id == user.id).first()
+        if not row:
+            raise ValueError("memory is not available to the current user")
+        for column, param_name in assignments.items():
+            if column == "is_active":
+                row.is_active = bool(params[param_name])
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_behavior_insight(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(BehaviorInsight).filter(BehaviorInsight.id == row_id, BehaviorInsight.user_id == user.id).first()
+        if not row:
+            raise ValueError("behavior insight is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column == "evidence_json":
+                row.evidence_json = self._json_param(value)
+            elif column == "confidence":
+                row.confidence = self._confidence(value)
+            elif column == "is_active":
+                row.is_active = bool(value)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_fact(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(FinancialFact).filter(FinancialFact.id == row_id, FinancialFact.user_id == user.id).first()
+        if not row:
+            raise ValueError("financial fact is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column == "value_json":
+                row.value_json = self._json_param(value)
+            elif column == "confidence":
+                row.confidence = self._confidence(value)
+            elif column in {"valid_from", "valid_to"}:
+                setattr(row, column, parse_relative_date(value) if value else None)
+            elif column == "is_active":
+                row.is_active = bool(value)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_warning(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(FinancialWarning).filter(FinancialWarning.id == row_id, FinancialWarning.user_id == user.id).first()
+        if not row:
+            raise ValueError("financial warning is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column == "status":
+                row.status = str(value)[:30]
+            elif column == "resolved_at":
+                row.resolved_at = datetime.utcnow() if value in {True, "now", "امروز"} else None
         db.commit()
         db.refresh(row)
         return int(row.id)

@@ -10,6 +10,7 @@ import {
   MessageCircle,
   User,
   Wallet,
+  CalendarClock,
 } from "lucide-react";
 
 const navItems = [
@@ -17,6 +18,7 @@ const navItems = [
   { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
   { href: "/budget", label: "بودجه", icon: Wallet },
   { href: "/goals", label: "اهداف", icon: Target },
+  { href: "/future-commitments", label: "تعهدات آینده", icon: CalendarClock },
   { href: "/chat", label: "دستیار", icon: MessageCircle },
   { href: "/profile", label: "پروفایل", icon: User },
 ];
@@ -25,6 +27,7 @@ const mobileNavItems = [
   { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
   { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
   { href: "/budget", label: "بودجه", icon: Wallet },
+  { href: "/future-commitments", label: "تعهدات", icon: CalendarClock },
   { href: "/chat", label: "دستیار", icon: MessageCircle },
   { href: "/profile", label: "پروفایل", icon: User },
 ];

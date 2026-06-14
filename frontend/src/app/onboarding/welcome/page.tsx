@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -11,18 +11,18 @@ const CELEBRATION_IMAGE = "https://images.unsplash.com/photo-1530021232320-687d8
 
 const EMOJI_PARTICLES = ["🎉", "✨", "🌟", "💫", "🎊", "⭐", "🥳"];
 
-function ConfettiParticles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    emoji: EMOJI_PARTICLES[i % EMOJI_PARTICLES.length],
-    x: Math.random() * 100,
-    delay: Math.random() * 0.8,
-    duration: 1.2 + Math.random() * 1,
-  }));
+const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  id: i,
+  emoji: EMOJI_PARTICLES[i % EMOJI_PARTICLES.length],
+  x: (i * 37) % 100,
+  delay: ((i * 13) % 8) / 10,
+  duration: 1.2 + ((i * 17) % 10) / 10,
+}));
 
+function ConfettiParticles() {
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-20">
-      {particles.map((p) => (
+      {PARTICLES.map((p) => (
         <motion.div
           key={p.id}
           initial={{ y: "-10%", x: `${p.x}vw`, opacity: 1, scale: 0.5 }}
