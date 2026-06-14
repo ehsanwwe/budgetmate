@@ -32,7 +32,9 @@ deploy:
     - |
       ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
         cd ${DEPLOY_PATH} && \
-        git pull origin main && \
+        git fetch --prune origin main && \
+        git checkout -B main origin/main && \
+        git reset --hard origin/main && \
         docker compose down && \
         docker compose up -d --build
       "
