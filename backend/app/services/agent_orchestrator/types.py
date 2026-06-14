@@ -13,6 +13,7 @@ class StrictModel(BaseModel):
 class AgentOperationType(str, Enum):
     select = "select"
     insert = "insert"
+    update = "update"
     final_response = "final_response"
     ask_clarification = "ask_clarification"
     no_op = "no_op"
@@ -25,7 +26,10 @@ class AgentPlanStep(StrictModel):
     table_name: Optional[str] = None
     sql: Optional[str] = None
     params: dict[str, Any] = Field(default_factory=dict)
+    expected_result_name: Optional[str] = None
     depends_on: list[str] = Field(default_factory=list)
+    result_usage: Optional[str] = None
+    requires_result_before_next_step: bool = False
     user_visible: bool = False
     confidence: float = Field(ge=0, le=1, default=0)
 
@@ -33,8 +37,10 @@ class AgentPlanStep(StrictModel):
 class AgentPlan(StrictModel):
     intent: str
     language: str = "fa"
+    reasoning_summary_for_backend_only: Optional[str] = None
     requires_db: bool = False
     steps: list[AgentPlanStep] = Field(default_factory=list)
+    final_response_instruction: Optional[str] = None
     final_response_hint: Optional[str] = None
     clarification_question: Optional[str] = None
     confidence: float = Field(ge=0, le=1, default=0)

@@ -22,12 +22,18 @@ def parse_relative_date(value: object | None) -> date:
         return value
     if not value:
         return local_today()
-    raw = str(value).strip().lower()
+    raw = " ".join(str(value).strip().lower().replace("\u200c", " ").split())
     today = local_today()
     if raw in {"today", "امروز"}:
         return today
     if raw in {"yesterday", "دیروز"}:
         return today - timedelta(days=1)
+    if raw in {"پریروز", "دو روز پیش", "2 روز پیش"}:
+        return today - timedelta(days=2)
+    if raw in {"سه روز پیش", "3 روز پیش"}:
+        return today - timedelta(days=3)
+    if raw in {"هفته پیش", "هفته گذشته", "هفته قبل"}:
+        return today - timedelta(days=7)
     return date.fromisoformat(raw)
 
 

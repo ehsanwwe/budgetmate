@@ -5,14 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.db import get_db
-from app.models.personal_cfo import BehaviorInsight, FinancialMemory
+from app.models.personal_cfo import BehaviorInsight, FinancialDecisionLog, FinancialFact, FinancialMemory, FinancialWarning
 from app.models.user import User
 from app.schemas.personal_cfo import (
     BehaviorInsightRead,
+    FinancialDecisionLogRead,
+    FinancialFactRead,
     FinancialMemoryCreate,
     FinancialMemoryRead,
     FinancialPersonaRead,
     FinancialPersonaUpdate,
+    FinancialWarningRead,
 )
 from app.services.personal_cfo.memory_service import create_memory, deactivate_memory
 from app.services.personal_cfo.persona_service import get_or_create_persona
@@ -76,3 +79,25 @@ def list_behavior_insights(current_user: User = Depends(get_current_user), db: S
         BehaviorInsight.user_id == current_user.id,
         BehaviorInsight.is_active == True,
     ).order_by(BehaviorInsight.last_detected_at.desc()).limit(50).all()
+
+
+@router.get("/facts", response_model=list[FinancialFactRead])
+def list_facts(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(FinancialFact).filter(
+        FinancialFact.user_id == current_user.id,
+        FinancialFact.is_active == True,
+    ).order_by(FinancialFact.updated_at.desc(), FinancialFact.id.desc()).limit(50).all()
+
+
+@router.get("/warnings", response_model=list[FinancialWarningRead])
+def list_warnings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(FinancialWarning).filter(
+        FinancialWarning.user_id == current_user.id,
+    ).order_by(FinancialWarning.created_at.desc(), FinancialWarning.id.desc()).limit(50).all()
+
+
+@router.get("/decision-logs", response_model=list[FinancialDecisionLogRead])
+def list_decision_logs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(FinancialDecisionLog).filter(
+        FinancialDecisionLog.user_id == current_user.id,
+    ).order_by(FinancialDecisionLog.created_at.desc(), FinancialDecisionLog.id.desc()).limit(50).all()

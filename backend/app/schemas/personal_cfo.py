@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -71,5 +71,47 @@ class BehaviorInsightRead(BaseModel):
     first_detected_at: datetime
     last_detected_at: datetime
     is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class FinancialFactRead(BaseModel):
+    id: int
+    user_id: int
+    fact_type: str
+    subject: str
+    value_json: dict[str, Any]
+    confidence: float
+    valid_from: date | None = None
+    valid_to: date | None = None
+    created_at: datetime
+    updated_at: datetime
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class FinancialWarningRead(BaseModel):
+    id: int
+    user_id: int
+    warning_type: str
+    severity: str
+    message: str
+    evidence_json: dict[str, Any]
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class FinancialDecisionLogRead(BaseModel):
+    id: int
+    user_id: int
+    decision_title: str
+    decision_type: str
+    input_json: dict[str, Any]
+    analysis_json: dict[str, Any]
+    created_at: datetime
 
     model_config = {"from_attributes": True}

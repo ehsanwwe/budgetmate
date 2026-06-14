@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.user import User
 from app.services.agent_orchestrator.context_builder import build_agent_context
 from app.services.agent_orchestrator.db_world import render_db_world
@@ -18,6 +20,8 @@ from app.services.agent_orchestrator.types import (
     AgentPlan,
     AgentPlanStep,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AgentOrchestrator:
@@ -50,12 +54,25 @@ class AgentOrchestrator:
         execution_payloads: list[dict[str, Any]] = []
         plan = await self.planner.plan(db_world, user_message, finance_context, history=history)
         last_action_plan: AgentPlan | None = None
+        last_plan: AgentPlan = plan
 
-        for _ in range(3):
+        for _ in range(5):
+            last_plan = plan
+            if settings.AGENT_DEBUG_TRACE:
+                logger.info(
+                    "agent planner iteration intent=%s step_count=%s operation_types=%s",
+                    plan.intent,
+                    len(plan.steps),
+                    [step.operation_type.value for step in plan.steps],
+                )
             if plan.clarification_question:
                 return self.composer.compose(db, plan, all_results)
 
-            actionable = [s for s in plan.steps if s.operation_type in {AgentOperationType.select, AgentOperationType.insert}]
+            actionable = [
+                s
+                for s in plan.steps
+                if s.operation_type in {AgentOperationType.select, AgentOperationType.insert, AgentOperationType.update}
+            ]
             if not actionable:
                 if last_action_plan and all_results:
                     composed_plan = last_action_plan.model_copy(update={"final_response_hint": plan.final_response_hint})
@@ -63,15 +80,24 @@ class AgentOrchestrator:
                 return self.composer.compose(db, plan, all_results, fallback_message=plan.final_response_hint or "")
 
             last_action_plan = plan
+            had_repairable_failure = False
             for step in actionable:
                 result = self._validate_and_execute(db, user, plan, step)
+                if settings.AGENT_DEBUG_TRACE:
+                    logger.info(
+                        "agent step validation step_id=%s operation=%s allowed=%s executed=%s",
+                        step.step_id,
+                        step.operation_type.value,
+                        result.allowed,
+                        result.executed,
+                    )
                 all_results.append(result)
                 execution_payloads.append(result.model_dump(mode="json"))
                 if not result.allowed or result.error:
-                    return self.composer.compose(db, plan, all_results)
-
-            if any(r.operation_type == AgentOperationType.insert and r.executed for r in all_results):
-                return self.composer.compose(db, plan, all_results)
+                    if self._is_clearly_malicious(result):
+                        return self.composer.compose(db, plan, all_results)
+                    had_repairable_failure = True
+                    break
 
             plan = await self.planner.plan(
                 db_world,
@@ -80,8 +106,10 @@ class AgentOrchestrator:
                 history=history,
                 execution_results=execution_payloads,
             )
+            if had_repairable_failure:
+                continue
 
-        return self.composer.compose(db, plan, all_results, fallback_message=plan.final_response_hint or "")
+        return self.composer.compose(db, last_action_plan or last_plan, all_results, fallback_message=last_plan.final_response_hint or "")
 
     def _validate_and_execute(
         self,
@@ -102,3 +130,19 @@ class AgentOrchestrator:
                 rejected_reason=str(exc),
             )
         return self.executor.execute(db, user, step, validation, plan.intent)
+
+    def _is_clearly_malicious(self, result: AgentExecutionResult) -> bool:
+        reason = (result.rejected_reason or result.error or "").lower()
+        return any(
+            marker in reason
+            for marker in (
+                "destructive",
+                "administrative",
+                "forbidden",
+                "multiple statements",
+                "comments",
+                "llm-provided user_id",
+                "cannot set user_id",
+                "not allowed",
+            )
+        )

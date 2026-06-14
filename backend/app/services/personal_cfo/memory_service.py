@@ -18,6 +18,8 @@ ALLOWED_MEMORY_TYPES = {
     "recurring_payment",
     "saving_plan",
     "risk_note",
+    "project_income",
+    "future_commitment",
 }
 
 

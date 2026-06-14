@@ -7,7 +7,7 @@ from app.services.agent_orchestrator.table_policy import FORBIDDEN_TABLES, get_p
 from app.services.agent_orchestrator.types import AgentOperationType, SqlValidationResult
 
 _DANGEROUS = re.compile(
-    r"\b(drop|delete|alter|truncate|create|replace|attach|detach|pragma|vacuum|update)\b",
+    r"\b(drop|delete|alter|truncate|create|replace|attach|detach|pragma|vacuum)\b",
     re.IGNORECASE,
 )
 _COMMENT = re.compile(r"(--|/\*|\*/|#)")
@@ -21,6 +21,8 @@ _INSERT_RE = re.compile(
 )
 _PARAM_RE = re.compile(r":[a-zA-Z_][\w]*")
 _LIMIT_RE = re.compile(r"\blimit\s+(\d+)\b", re.IGNORECASE)
+_TABLE_REF_RE = re.compile(r"\b(?:from|join)\s+([a-zA-Z_][\w]*)\b", re.IGNORECASE)
+_ALLOWED_FUNCTIONS = {"sum", "count", "coalesce", "date", "strftime", "max", "min", "avg"}
 
 
 class SqlValidator:
@@ -32,7 +34,7 @@ class SqlValidator:
         params: dict[str, Any] | None = None,
     ) -> SqlValidationResult:
         params = params or {}
-        if operation_type not in {AgentOperationType.select, AgentOperationType.insert}:
+        if operation_type not in {AgentOperationType.select, AgentOperationType.insert, AgentOperationType.update}:
             return self._reject("unknown or non-SQL operation type")
         if not sql or not isinstance(sql, str):
             return self._reject("missing SQL")
@@ -52,6 +54,8 @@ class SqlValidator:
                 return self._validate_select(table_name, sql, params)
             except ValueError as exc:
                 return self._reject(str(exc))
+        if operation_type == AgentOperationType.update:
+            return self._reject("UPDATE is not enabled in this phase")
         try:
             return self._validate_insert(table_name, sql, params)
         except ValueError as exc:
@@ -62,11 +66,18 @@ class SqlValidator:
         if not match:
             return self._reject("only simple SELECT statements are allowed")
         table = match.group("table").lower()
-        if requested_table and table != requested_table.lower():
-            return self._reject("step table_name does not match SQL table")
-        policy = get_policy(table)
-        if not policy or table in FORBIDDEN_TABLES or not policy.allowed_select or policy.system_only:
-            return self._reject("SELECT from this table is forbidden", table)
+        referenced_tables = [name.lower() for name in _TABLE_REF_RE.findall(sql)]
+        if table not in referenced_tables:
+            referenced_tables.insert(0, table)
+        if requested_table and requested_table.lower() not in referenced_tables:
+            return self._reject("step table_name is not referenced by SQL")
+        policies = {}
+        for ref_table in referenced_tables:
+            policy = get_policy(ref_table)
+            if not policy or ref_table in FORBIDDEN_TABLES or not policy.allowed_select or policy.system_only:
+                return self._reject("SELECT from this table is forbidden", ref_table)
+            policies[ref_table] = policy
+        policy = policies[requested_table.lower() if requested_table and requested_table.lower() in policies else table]
 
         columns = self._extract_select_columns(match.group("cols"))
         if not columns:
@@ -74,9 +85,16 @@ class SqlValidator:
         for col in columns:
             if col == "*":
                 return self._reject("SELECT * is not allowed", table)
+            if col in _ALLOWED_FUNCTIONS or col in {"literal"}:
+                continue
             base = col.split(".", 1)[-1]
-            if base not in policy.selectable_columns and base not in {"count", "sum"}:
+            if not any(base in item.selectable_columns for item in policies.values()):
                 return self._reject(f"column {base} is not selectable", table)
+
+        for ref_table, ref_policy in policies.items():
+            for forbidden in ref_policy.forbidden_columns:
+                if re.search(rf"\b{re.escape(ref_table)}\.{re.escape(forbidden)}\b|\b{re.escape(forbidden)}\b", sql, re.IGNORECASE):
+                    return self._reject(f"column {forbidden} is forbidden", ref_table)
 
         self._validate_params_are_used(sql, params)
         limit_match = _LIMIT_RE.search(sql)
@@ -127,19 +145,42 @@ class SqlValidator:
 
     def _extract_select_columns(self, raw: str) -> list[str]:
         cols: list[str] = []
-        for part in raw.split(","):
+        for part in self._split_select_items(raw):
             token = part.strip()
             lower = token.lower()
-            if lower.startswith("sum("):
-                inner = re.search(r"sum\s*\(\s*([a-zA-Z_][\w.]*)\s*\)", lower)
-                cols.append(inner.group(1).split(".")[-1] if inner else "sum")
+            if re.match(r"^\d+(\.\d+)?(\s+as\s+[a-zA-Z_][\w]*)?$", lower):
+                cols.append("literal")
                 continue
-            if lower.startswith("count("):
-                cols.append("count")
+            if any(fn + "(" in lower for fn in _ALLOWED_FUNCTIONS):
+                for fn in _ALLOWED_FUNCTIONS:
+                    if fn + "(" in lower:
+                        cols.append(fn)
+                for identifier in re.findall(r"\b([a-zA-Z_][\w.]*)\b", lower):
+                    base = identifier.split(".")[-1]
+                    if base not in _ALLOWED_FUNCTIONS and base not in {"as", "total", "null", "ifnull"}:
+                        cols.append(base)
                 continue
             token = re.split(r"\s+as\s+|\s+", token, flags=re.IGNORECASE)[0]
             cols.append(token.split(".")[-1].lower())
         return cols
+
+    def _split_select_items(self, raw: str) -> list[str]:
+        items: list[str] = []
+        current: list[str] = []
+        depth = 0
+        for char in raw:
+            if char == "(":
+                depth += 1
+            elif char == ")" and depth:
+                depth -= 1
+            if char == "," and depth == 0:
+                items.append("".join(current))
+                current = []
+                continue
+            current.append(char)
+        if current:
+            items.append("".join(current))
+        return items
 
     def _validate_params_are_used(self, sql: str, params: dict[str, Any]) -> None:
         used = {p[1:] for p in _PARAM_RE.findall(sql)}

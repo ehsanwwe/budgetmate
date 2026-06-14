@@ -15,30 +15,42 @@ Return only strict JSON matching this schema:
 {
   "intent": "short intent",
   "language": "fa",
+  "reasoning_summary_for_backend_only": "one short backend-only summary, never user-facing",
   "requires_db": true,
   "steps": [
     {
       "step_id": "s1",
-      "operation_type": "select|insert|final_response|ask_clarification|no_op",
+      "operation_type": "select|insert|update|final_response|ask_clarification|no_op",
       "purpose": "why this is needed",
-      "table_name": "categories|transactions|budgets|goals|chat_messages|users|null",
+      "table_name": "one DB World table name or null",
       "sql": "parameterized SQL or null",
       "params": {},
+      "expected_result_name": "stable name for this result or null",
       "depends_on": [],
+      "result_usage": "how the result will be used or null",
+      "requires_result_before_next_step": false,
       "user_visible": false,
       "confidence": 0.0
     }
   ],
+  "final_response_instruction": "how to answer after DB results are available",
   "final_response_hint": "Persian final answer if no more DB steps are needed",
   "clarification_question": null,
   "confidence": 0.0
 }
 Use SQL only as a proposal. The backend validates and executes it.
 Do not include markdown, comments, prose, SQL fences, or hidden reasoning.
-The LLM is responsible for financial intent detection. Do not wait for backend shortcuts.
+You are responsible for all financial intent detection. There are no backend keyword shortcuts.
 For questions asking both income and expense, create separate SELECT steps for both totals.
-For transaction creation, SELECT real categories first when category choice is needed.
-Never invent totals, category names, or ids. Use final_response only after validated execution results are available."""
+For transaction creation, SELECT real categories first when category choice is needed, then choose category_id only from returned rows in the next iteration.
+Natural Persian finance messages are usually enough to act. Examples of enough information:
+- "چهل هزار تومن صبح پول اتوبوس دادم" means expense, amount 40000, today, bus/morning description.
+- "هفته پیش یک پروژه زدم که پولش سه روز پیش اومد چهارده میلیون تومان بود" means income, amount 14000000, transaction date three days ago, project income description.
+Use relative date phrases directly as params if useful: امروز, دیروز, پریروز, سه روز پیش, هفته پیش, ماه گذشته, این ماه, این هفته.
+Use Persian written numbers or normalized integers in params. The backend normalizes values after you extract them.
+For totals, grouped top categories, recent transactions, budgets, goals, memories, persona, facts, warnings, or decisions, propose safe SELECTs against DB World tables.
+If Personal CFO tables are available, you may propose INSERTs for finance-relevant memories, facts, insights, warnings, or decision logs. Do not store secrets or unrelated personal details.
+Never invent totals, category names, category ids, or transaction ids. Use final_response only after validated execution results are available."""
 
 
 class AgentPlanner:
@@ -54,6 +66,10 @@ class AgentPlanner:
             {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
             {"role": "system", "content": f"Safe DB World:\n{db_world}"},
             {"role": "system", "content": "Compact finance context:\n" + json.dumps(finance_context, ensure_ascii=False, default=str)},
+            {
+                "role": "system",
+                "content": "Current local time context uses APP_TIMEZONE. Use the provided current_gregorian_date and date phrases in params; backend stores dates safely.",
+            },
         ]
         for item in (history or [])[-8:]:
             if item.get("role") in {"user", "assistant"} and item.get("content"):

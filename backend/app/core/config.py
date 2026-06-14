@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     STARTER_FREE_TOKENS: int = 20000
     APP_TIMEZONE: str = "Asia/Tehran"
+    AGENT_DEBUG_TRACE: bool = False
 
     @field_validator("DATABASE_URL")
     @classmethod

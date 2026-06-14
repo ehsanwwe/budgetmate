@@ -60,7 +60,7 @@ class ResponseComposer:
 
         select_message = self._compose_select_results(db, plan, results)
         safe_hint = sanitize_user_message(plan.final_response_hint)
-        if select_message and not safe_hint:
+        if select_message:
             return AgentFinalResponse(
                 message=select_message,
                 operations_summary=[r.summary or "" for r in results if r.summary],
@@ -119,11 +119,22 @@ class ResponseComposer:
             step = step_by_id.get(result.step_id)
             if not step:
                 continue
+            if result.rows and "type" in result.rows[0]:
+                for typed_row in result.rows:
+                    typed_total = self._extract_total(typed_row)
+                    typed_type = typed_row.get("type")
+                    if typed_type in {"expense", "income"} and typed_total is not None:
+                        totals[str(typed_type)] = typed_total
+                continue
             row = result.rows[0] if result.rows else {}
             total = self._extract_total(row)
             if "category_id" in row and total is not None:
                 category = db.query(Category).filter(Category.id == int(row["category_id"])).first() if row.get("category_id") is not None else None
-                top_category = (category.name if category else "سایر", total)
+                row_name = row.get("name") or row.get("category_name")
+                top_category = (str(row_name or (category.name if category else "سایر")), total)
+                continue
+            if ("name" in row or "category_name" in row) and total is not None:
+                top_category = (str(row.get("name") or row.get("category_name") or "سایر"), total)
                 continue
             tx_type = self._step_transaction_type(step)
             if tx_type and total is not None:
@@ -164,7 +175,10 @@ class ResponseComposer:
         raw = step.params.get("type")
         if raw in {"expense", "income"}:
             return str(raw)
-        purpose = (step.purpose or "").lower()
+        purpose = " ".join(
+            str(part or "").lower()
+            for part in (step.purpose, step.expected_result_name, step.result_usage)
+        )
         sql = (step.sql or "").lower()
         if "income" in purpose or "type = 'income'" in sql or 'type = "income"' in sql:
             return "income"

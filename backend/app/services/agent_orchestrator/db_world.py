@@ -9,13 +9,14 @@ from app.services.agent_orchestrator.types import DbWorld
 
 
 WORLD_INSTRUCTIONS = [
-    "You can only plan SELECT and INSERT operations listed in this DB World.",
-    "Never plan DELETE, UPDATE, DROP, ALTER, CREATE, PRAGMA, ATTACH, DETACH, VACUUM, comments, or multiple SQL statements.",
+    "You can only plan SELECT, INSERT, and explicitly allowed UPDATE operations listed in this DB World.",
+    "In this phase no table allows UPDATE. Never plan DELETE, DROP, ALTER, CREATE, PRAGMA, ATTACH, DETACH, VACUUM, comments, or multiple SQL statements.",
     "All user-owned tables are scoped by the backend. Do not include or set user_id.",
     "Use only named parameters such as :amount and put values in params.",
     "For categories, SELECT real rows first. Choose category_id only from returned rows; do not guess hidden ids.",
     "For transactions, INSERT only category_id, amount, type, description, date. The backend injects the authenticated user id.",
-    "Ask clarification when amount, type, date, or target entity is ambiguous.",
+    "For financial memories/facts/insights/warnings/decision logs, store only finance-relevant information and keep content compact.",
+    "Ask clarification only when amount, type, date, or target entity is genuinely ambiguous.",
     "Return strict JSON matching AgentPlan only. Do not include prose during planning.",
 ]
 

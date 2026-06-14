@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Import models to ensure they are registered with Base.metadata
-    from app.models import User, AdminUser, Budget, Category, Transaction, Goal, ChatMessage, ActivityLog, AgentSqlAuditLog, FinancialPersona, FinancialMemory, BehaviorInsight, PersonaUpdateLog, TokenWallet, TokenUsageLog, TokenPurchase, UserSubscription
+    from app.models import User, AdminUser, Budget, Category, Transaction, Goal, ChatMessage, ActivityLog, AgentSqlAuditLog, FinancialPersona, FinancialMemory, BehaviorInsight, PersonaUpdateLog, FinancialFact, FinancialWarning, FinancialDecisionLog, TokenWallet, TokenUsageLog, TokenPurchase, UserSubscription
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created/verified")
 
