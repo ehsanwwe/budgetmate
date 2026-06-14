@@ -151,6 +151,9 @@ export default function ChatPage() {
     setStreaming(true);
     setStreamingText("");
 
+    // Track whether the backend started responding — prevents double-submit fallback
+    let backendResponded = false;
+
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
       const res = await fetch(`${apiBase}/chat/stream?content=${encodeURIComponent(userMsg)}`, {
@@ -177,12 +180,15 @@ export default function ChatPage() {
             try {
               const parsed = JSON.parse(data);
               if (currentEventType === "complete") {
-                // Replace accumulated with canonical processed text (confirmations appended, action blocks stripped)
                 accumulated = parsed.text || parsed.content || accumulated;
                 setStreamingText(accumulated);
               } else {
-                accumulated += parsed.chunk || parsed.text || parsed.content || "";
-                setStreamingText(accumulated);
+                const chunk = parsed.chunk || parsed.text || parsed.content || "";
+                if (chunk) {
+                  backendResponded = true;  // backend has started processing this request
+                  accumulated += chunk;
+                  setStreamingText(accumulated);
+                }
               }
             } catch {
               if (currentEventType !== "complete") {
@@ -197,12 +203,24 @@ export default function ChatPage() {
 
       if (accumulated) setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
     } catch {
-      try {
-        const res = await api.post("/chat/message", { content: userMsg });
-        setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || "پاسخی دریافت نشد" }]);
-      } catch {
-        toast.error("خطا در ارسال پیام");
-        setMessages((prev) => [...prev, { role: "assistant", content: "متأسفم، مشکلی پیش آمده. دوباره تلاش کنید." }]);
+      // Only fall back to /chat/message if the backend never started responding.
+      // If it did respond (backendResponded=true), the request was already processed —
+      // sending again would create duplicate DB records (goals, transactions, etc.).
+      if (!backendResponded) {
+        try {
+          const res = await api.post("/chat/message", { content: userMsg });
+          setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || "پاسخی دریافت نشد" }]);
+        } catch {
+          toast.error("خطا در ارسال پیام");
+          setMessages((prev) => [...prev, { role: "assistant", content: "متأسفم، مشکلی پیش آمده. دوباره تلاش کنید." }]);
+        }
+      } else {
+        // Backend processed the request but stream dropped — show whatever we accumulated
+        if (accumulated) {
+          setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
+        } else {
+          toast.error("اتصال قطع شد. پیام پردازش شد اما پاسخ ناقص است.");
+        }
       }
     } finally {
       setStreaming(false);

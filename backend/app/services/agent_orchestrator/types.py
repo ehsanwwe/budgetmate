@@ -66,6 +66,7 @@ class AgentExecutionResult(StrictModel):
     error: Optional[str] = None
     skipped_duplicate: bool = False
     operation_fingerprint: Optional[str] = None
+    existing_record_id: Optional[int] = None
 
 
 class AgentFinalResponse(StrictModel):

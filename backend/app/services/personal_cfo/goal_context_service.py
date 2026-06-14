@@ -18,11 +18,31 @@ _GOAL_SYNONYMS = {
     "laptop": "لپتاپ",
 }
 
+# Common prefixes stripped from goal titles before semantic comparison.
+# Ordered longest-first so "هدف خرید " is tried before "هدف " and "خرید ".
+_GOAL_PREFIXES: tuple[str, ...] = (
+    "هدف خرید ",
+    "هدف پس‌انداز برای ",
+    "هدف پس انداز برای ",
+    "هدف پس‌انداز ",
+    "هدف پس انداز ",
+    "هدف ذخیره برای ",
+    "هدف ذخیره ",
+    "هدف ",
+    "خرید ",
+    "پس‌انداز برای ",
+    "پس انداز برای ",
+    "پس‌انداز ",
+    "پس انداز ",
+    "ذخیره برای ",
+    "ذخیره ",
+)
+
 
 def normalize_goal_text(value: str | None) -> str:
     text = str(value or "").lower()
     replacements = {
-        "\u200c": "",
+        "‌": "",
         "ي": "ی",
         "ك": "ک",
         "ة": "ه",
@@ -36,7 +56,12 @@ def normalize_goal_text(value: str | None) -> str:
     text = " ".join(text.split())
     for old, new in _GOAL_SYNONYMS.items():
         text = text.replace(old, new)
-    return text
+    # Strip one matching prefix (longest-first order ensures correct priority)
+    for prefix in _GOAL_PREFIXES:
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    return text.strip()
 
 
 def goal_match_score(query_text: str, title: str) -> float:

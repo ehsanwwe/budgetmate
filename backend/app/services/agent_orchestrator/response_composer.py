@@ -80,6 +80,19 @@ class ResponseComposer:
         if safe_hint and not current_turn_wrote:
             safe_hint = _strip_leaked_operations(safe_hint)
 
+        # Semantic goal dedup: existing active goal prevented a new insert
+        skipped_with_existing = [r for r in results if r.skipped_duplicate and r.existing_record_id]
+        if skipped_with_existing:
+            existing_id = skipped_with_existing[-1].existing_record_id
+            goal = db.query(Goal).filter(Goal.id == existing_id).first()
+            if goal:
+                deadline_text = f"، مهلت {goal.deadline.isoformat()}" if goal.deadline else ""
+                return AgentFinalResponse(
+                    message=f"این هدف قبلاً ثبت شده بود؛ دوباره ثبت نکردم. هدف «{goal.title}» با مبلغ {_fmt(goal.target_amount)}{deadline_text} در اهداف فعال شما وجود دارد.",
+                    operations_summary=["skipped duplicate goal"],
+                    metadata={"intent": plan.intent, "existing_goal_id": existing_id},
+                )
+
         # For UPDATE turns: verify the write happened via DB re-read before using hint/response
         updated = [r for r in results if r.updated_id and not r.skipped_duplicate]
         if updated:

@@ -22,6 +22,7 @@ from app.services.agent_orchestrator.table_policy import get_policy
 from app.services.agent_orchestrator.types import AgentExecutionResult, AgentOperationType, AgentPlanStep, SqlValidationResult
 from app.services.agent_orchestrator.value_normalizer import normalize_amount, normalize_date
 from app.services.personal_cfo.behavior_service import ALLOWED_INSIGHTS
+from app.services.personal_cfo.goal_context_service import find_goal_candidates, goal_match_score, normalize_goal_text
 from app.services.personal_cfo.behavior_service import upsert_behavior_insight
 from app.services.personal_cfo.memory_service import ALLOWED_MEMORY_TYPES
 
@@ -75,7 +76,10 @@ def _compute_fingerprint(
                 v = normalize_amount(v)
             except Exception:
                 pass
-        if isinstance(v, str):
+        # Normalize goal titles so "خرید انگشتر طلا" and "انگشتر طلا" hash identically
+        elif k == "title" and table_name == "goals" and isinstance(v, str):
+            v = normalize_goal_text(v)
+        elif isinstance(v, str):
             v = v.lower().strip()
         key_params[k] = v
 
@@ -152,6 +156,26 @@ class SqlExecutor:
                     skipped_duplicate=True,
                     operation_fingerprint=fingerprint,
                     summary=f"skipped duplicate (already executed within {_DEDUP_WINDOW_MINUTES}m)",
+                )
+
+        # Semantic goal dedup: check active goals with similar title before any INSERT
+        if validation.operation_type == AgentOperationType.insert and validation.table_name == "goals":
+            try:
+                existing_goal_id = self._check_semantic_goal_duplicate(db, user, validation.params)
+            except Exception:
+                existing_goal_id = None
+            if existing_goal_id is not None:
+                audit_operation(db, user.id, intent, step, "skipped_duplicate",
+                                f"active goal already exists id={existing_goal_id}", False)
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=step.operation_type,
+                    allowed=True,
+                    executed=False,
+                    skipped_duplicate=True,
+                    operation_fingerprint=fingerprint,
+                    existing_record_id=existing_goal_id,
+                    summary=f"skipped duplicate goal (active goal id={existing_goal_id} already exists)",
                 )
 
         try:
@@ -233,6 +257,36 @@ class SqlExecutor:
             db.commit()
         except Exception:
             db.rollback()
+
+    def _check_semantic_goal_duplicate(self, db: Session, user: User, params: dict[str, Any]) -> int | None:
+        """Return existing active goal id if a semantically identical goal already exists."""
+        title = str(params.get("title") or "").strip()
+        if not title:
+            return None
+        target_amount: int | None = None
+        try:
+            if params.get("target_amount") is not None:
+                target_amount = normalize_amount(params["target_amount"])
+        except Exception:
+            pass
+        normalized_incoming = normalize_goal_text(title)
+        candidates = find_goal_candidates(db, user.id, title)
+        for candidate in candidates:
+            normalized_existing = normalize_goal_text(candidate.title or "")
+            amounts_match = target_amount is not None and candidate.target_amount == target_amount
+            no_amount = target_amount is None
+            # Exact normalized title match
+            if normalized_incoming and normalized_existing == normalized_incoming:
+                if amounts_match or no_amount:
+                    return candidate.id
+            # High semantic similarity
+            score = goal_match_score(title, candidate.title or "")
+            if amounts_match:
+                if score >= 0.55:
+                    return candidate.id
+            elif no_amount and score >= 0.80:
+                return candidate.id
+        return None
 
     def _execute_select(self, db: Session, user: User, validation: SqlValidationResult) -> list[dict[str, Any]]:
         sql = validation.sql or ""
