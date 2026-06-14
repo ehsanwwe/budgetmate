@@ -141,8 +141,6 @@ class AgentOrchestrator:
                 "forbidden",
                 "multiple statements",
                 "comments",
-                "llm-provided user_id",
                 "cannot set user_id",
-                "not allowed",
             )
         )

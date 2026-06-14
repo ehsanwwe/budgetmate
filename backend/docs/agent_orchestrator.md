@@ -88,6 +88,15 @@ Phase 5.5 context completion:
 - `financial_personas`, `financial_memories`, `behavior_insights`, `financial_facts`, and `financial_warnings` have limited user-scoped UPDATE policies only for safe status/profile fields.
 - The frontend exposes `/future-commitments` and the chat UI aligns user messages to the right and assistant messages to the left while preserving RTL text direction.
 
+Phase 5.6 goal chat recovery:
+
+- Normal goal and Personal CFO advice questions should not fall into the generic safe-failure response.
+- If OpenAI mistakenly includes `user_id` in a SELECT/WHERE/params for a user-scoped table, the operation is rejected and audited, but the orchestrator treats it as repairable and asks the planner for a corrected backend-scoped query. Destructive/admin SQL still fails immediately.
+- User scope is inserted before `GROUP BY`, `HAVING`, `ORDER BY`, or `LIMIT`, so grouped spending/category queries stay valid after backend scoping.
+- Goal SELECT results have a safe formatter fallback that lists active goals with target amount, current amount, remaining amount, progress, and deadline when OpenAI returns a placeholder or generic failure hint after successful reads.
+- Goal UPDATE results have a safe formatter fallback that confirms the updated goal from the actual row.
+- Goal fuzzy matching is available only as a helper over real selected/stored goal titles. It normalizes Persian/Arabic characters, half-spaces, whitespace, and common laptop variants such as `لپتاپ`, `لپ تاب`, `لپ‌تاپ`, `لپتاب`, `لپباپ`, and `laptop`. It does not decide intent or bypass the OpenAI planner.
+
 Manual Phase 3 checks:
 
 - `هفته پیش یک پروژه زدم که پولش سه روز پیش اومد چهارده میلیون تومان بود`

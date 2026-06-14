@@ -53,6 +53,7 @@ class AgentExecutionResult(StrictModel):
     executed: bool
     rows: list[dict[str, Any]] = Field(default_factory=list)
     inserted_id: Optional[int] = None
+    updated_id: Optional[int] = None
     summary: Optional[str] = None
     rejected_reason: Optional[str] = None
     error: Optional[str] = None

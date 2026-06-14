@@ -92,6 +92,7 @@ class SqlExecutor:
                     operation_type=AgentOperationType.update,
                     allowed=True,
                     executed=True,
+                    updated_id=updated_id,
                     summary=f"updated row {updated_id}",
                 )
 
@@ -504,14 +505,14 @@ class SqlExecutor:
         clause = f"{qualified} = :__current_user_id"
         if re.search(r"\bwhere\b", sql, re.IGNORECASE):
             return re.sub(r"\bwhere\b", f"WHERE {clause} AND", sql, count=1, flags=re.IGNORECASE)
-        return re.sub(r"\b(order\s+by|limit)\b", f"WHERE {clause} \\1", sql, count=1, flags=re.IGNORECASE) if re.search(r"\b(order\s+by|limit)\b", sql, re.IGNORECASE) else f"{sql} WHERE {clause}"
+        return re.sub(r"\b(group\s+by|having|order\s+by|limit)\b", f"WHERE {clause} \\1", sql, count=1, flags=re.IGNORECASE) if re.search(r"\b(group\s+by|having|order\s+by|limit)\b", sql, re.IGNORECASE) else f"{sql} WHERE {clause}"
 
     def _add_category_scope(self, sql: str) -> str:
         table_ref = "categories.user_id" if "categories" in sql else "user_id"
         clause = f"({table_ref} IS NULL OR {table_ref} = :__current_user_id)"
         if re.search(r"\bwhere\b", sql, re.IGNORECASE):
             return re.sub(r"\bwhere\b", f"WHERE {clause} AND", sql, count=1, flags=re.IGNORECASE)
-        return re.sub(r"\b(order\s+by|limit)\b", f"WHERE {clause} \\1", sql, count=1, flags=re.IGNORECASE) if re.search(r"\b(order\s+by|limit)\b", sql, re.IGNORECASE) else f"{sql} WHERE {clause}"
+        return re.sub(r"\b(group\s+by|having|order\s+by|limit)\b", f"WHERE {clause} \\1", sql, count=1, flags=re.IGNORECASE) if re.search(r"\b(group\s+by|having|order\s+by|limit)\b", sql, re.IGNORECASE) else f"{sql} WHERE {clause}"
 
     def _add_limit(self, sql: str, limit: int) -> str:
         if re.search(r"\blimit\s+\d+\b", sql, re.IGNORECASE):
