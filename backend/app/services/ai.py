@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Protocol
 
 import httpx
 
@@ -13,47 +13,140 @@ logger = logging.getLogger(__name__)
 FALLBACK_MESSAGE = "در حال حاضر دستیار هوشمند در دسترس نیست. لطفا بعدا تلاش کنید."
 
 
-class OpenAIProviderError(RuntimeError):
+class LLMProviderError(RuntimeError):
     pass
 
 
+class LLMProviderConfigError(LLMProviderError):
+    pass
+
+
+class OpenAIProviderError(LLMProviderError):
+    pass
+
+
+class LLMProvider(Protocol):
+    name: str
+    model: str
+
+    async def complete_text(self, messages: list[dict]) -> str:
+        ...
+
+    async def complete_json(self, messages: list[dict]) -> str:
+        ...
+
+
+class OpenAIProvider:
+    name = "openai"
+
+    def __init__(self, api_key: str, model: str):
+        api_key = (api_key or "").strip()
+        model = (model or "").strip()
+        if not api_key:
+            raise LLMProviderConfigError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
+        if not model:
+            raise LLMProviderConfigError("OPENAI_MODEL is required when AI_PROVIDER=openai")
+        self.api_key = api_key
+        self.model = model
+
+    async def complete_text(self, messages: list[dict]) -> str:
+        return await self._complete(messages, require_json=False)
+
+    async def complete_json(self, messages: list[dict]) -> str:
+        return await self._complete(messages, require_json=True)
+
+    async def _complete(self, messages: list[dict], require_json: bool) -> str:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        body: dict = {"model": self.model, "messages": messages, "stream": False}
+        if require_json:
+            body["response_format"] = {"type": "json_object"}
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post("https://api.openai.com/v1/chat/completions", json=body, headers=headers)
+            if response.status_code != 200:
+                raise OpenAIProviderError(f"OpenAI returned HTTP {response.status_code}")
+            return response.json()["choices"][0]["message"]["content"]
+
+
+class OllamaProvider:
+    name = "ollama"
+
+    def __init__(self, base_url: str, model: str):
+        self.base_url = (base_url or "http://localhost:11434").strip().rstrip("/")
+        self.model = (model or "gpt-oss:20b").strip()
+        if not self.model:
+            raise LLMProviderConfigError("OLLAMA_MODEL is required when AI_PROVIDER=ollama")
+
+    async def complete_text(self, messages: list[dict]) -> str:
+        return await self._complete(messages, require_json=False)
+
+    async def complete_json(self, messages: list[dict]) -> str:
+        return await self._complete(messages, require_json=True)
+
+    async def _complete(self, messages: list[dict], require_json: bool) -> str:
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+        }
+        if require_json:
+            body["format"] = "json"
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(f"{self.base_url}/api/chat", json=body)
+            if response.status_code != 200:
+                raise LLMProviderError(f"Ollama returned HTTP {response.status_code}")
+            payload = response.json()
+            message = payload.get("message") or {}
+            content = message.get("content")
+            if content is None:
+                content = payload.get("response")
+            if not isinstance(content, str):
+                raise LLMProviderError("Ollama response did not include text content")
+            return content
+
+
+def _selected_provider_name() -> str:
+    explicit = (settings.AI_PROVIDER or "").strip().lower()
+    if explicit:
+        if explicit not in {"openai", "ollama"}:
+            raise LLMProviderConfigError("AI_PROVIDER must be either 'openai' or 'ollama'")
+        return explicit
+    if (settings.OPENAI_API_KEY or "").strip():
+        return "openai"
+    return "ollama"
+
+
+def get_llm_provider() -> LLMProvider:
+    provider_name = _selected_provider_name()
+    if provider_name == "openai":
+        return OpenAIProvider(settings.OPENAI_API_KEY, settings.OPENAI_MODEL)
+    return OllamaProvider(settings.OLLAMA_BASE_URL, settings.OLLAMA_MODEL)
+
+
 def resolve_ai_provider(model: str | None = None) -> tuple[str, str]:
-    if not settings.OPENAI_API_KEY:
-        raise OpenAIProviderError("OPENAI_API_KEY is required for the active AI provider")
-    selected_model = (model or settings.OPENAI_MODEL or "").strip()
-    if not selected_model:
-        raise OpenAIProviderError("OPENAI_MODEL is required for the active AI provider")
-    return "openai", selected_model
+    provider = get_llm_provider()
+    if model and provider.name == "openai":
+        provider = OpenAIProvider(settings.OPENAI_API_KEY, model)
+    return provider.name, provider.model
 
 
 def log_ai_provider_config() -> None:
     try:
-        provider, model = resolve_ai_provider()
-        logger.info("AI provider configured: provider=%s model=%s", provider, model)
-    except OpenAIProviderError as exc:
+        provider = get_llm_provider()
+        logger.info("AI provider configured: provider=%s model=%s", provider.name, provider.model)
+    except LLMProviderError as exc:
         logger.warning("AI provider is not configured: %s", exc)
 
 
-async def _call_openai(messages: list[dict], model: str, require_json: bool = False) -> str:
-    headers = {
-        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    body: dict = {"model": model, "messages": messages, "stream": False}
-    if require_json:
-        body["response_format"] = {"type": "json_object"}
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post("https://api.openai.com/v1/chat/completions", json=body, headers=headers)
-        if response.status_code != 200:
-            raise OpenAIProviderError(f"OpenAI returned HTTP {response.status_code}")
-        return response.json()["choices"][0]["message"]["content"]
-
-
 async def get_ai_chat_completion(messages: list[dict], require_json: bool = False) -> str:
-    """OpenAI-only provider call for backend-controlled prompts."""
-    _, model = resolve_ai_provider()
-    return await _call_openai(messages, model, require_json=require_json)
+    provider = get_llm_provider()
+    if require_json:
+        return await provider.complete_json(messages)
+    return await provider.complete_text(messages)
 
 
 async def get_ai_reply(
@@ -69,8 +162,8 @@ async def get_ai_reply(
     messages = [{"role": "system", "content": system}] + (history or []) + [{"role": "user", "content": user_message}]
     try:
         return await get_ai_chat_completion(messages)
-    except OpenAIProviderError as exc:
-        logger.warning("OpenAI chat unavailable: %s", exc)
+    except LLMProviderError as exc:
+        logger.warning("AI chat unavailable: %s", exc)
         return FALLBACK_MESSAGE
 
 

@@ -32,7 +32,7 @@ No new database migration was required in Phase 5.5 because migrations 007-009 a
 - active warnings
 - current-month budget summary
 
-The OpenAI planner remains responsible for intent detection. Backend deterministic logic is still limited to validation, execution, scoping, auditing, date/amount normalization, and response sanitization.
+The selected LLM planner remains responsible for intent detection. Backend deterministic logic is still limited to validation, execution, scoping, auditing, date/amount normalization, and response sanitization.
 
 ## Goal And Future Questions
 

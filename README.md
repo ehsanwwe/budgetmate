@@ -39,7 +39,7 @@
 - 🔒 **100% Privacy** — no bank integration, your data stays on your machine
 - 🇮🇷 **Persian-first** — full RTL UI, Jalali calendar, Persian numerals throughout
 - 🤖 **AI-powered** — chat with a financial advisor that knows your budget and spending
-- 🔌 **OpenAI-powered AI** — chat planning uses OpenAI, with backend validation and audit
+- 🔌 **Pluggable AI provider** — chat planning uses OpenAI or Ollama, with backend validation and audit
 - 👨‍💼 **Built-in admin panel** — manage users, view stats, block accounts
 - 📱 **Mobile-first responsive design** — works beautifully on any screen size
 
@@ -108,7 +108,7 @@
 ┌─────────┐    ┌─────────────────────────────────┐
 │ SQLite  │    │   AI Provider (pluggable)       │
 │   DB    │    │  ┌──────────┐  ┌──────────┐    │
-└─────────┘    │        OpenAI Planner        │
+└─────────┘    │     OpenAI / Ollama Planner     │
                │  backend validates actions  │
                └─────────────────────────────────┘
 ```
@@ -173,8 +173,17 @@ pip install --user -r requirements.txt
 Create `backend/.env`:
 
 ```env
+# LLM provider
+AI_PROVIDER=openai
+
+# OpenAI
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-4.1-mini
+
+# Ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gpt-oss:20b
+
 APP_TIMEZONE=Asia/Tehran
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_admin_password
@@ -237,12 +246,25 @@ For the admin panel:
 
 ## 🔌 Switching AI Providers
 
-BudgetMate's active chat/orchestrator path uses OpenAI only. The LLM plans; the backend validates, scopes, executes, audits, and formats.
+BudgetMate's active chat/orchestrator path selects its LLM provider from environment variables. The selected LLM plans; the backend validates, scopes, executes, audits, and formats.
+
+OpenAI mode:
 
 ```env
+AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-4.1-mini
 ```
+
+Ollama mode:
+
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gpt-oss:20b
+```
+
+Default mode: if `AI_PROVIDER` is missing and `OPENAI_API_KEY` exists, OpenAI is used. If both are missing, Ollama is used with `OLLAMA_BASE_URL=http://localhost:11434` and `OLLAMA_MODEL=gpt-oss:20b`.
 
 ---
 
@@ -475,10 +497,11 @@ npm run dev
 
 ## 🔌 سوئیچ بین Providerهای هوش مصنوعی
 
-مسیر فعال چت و orchestrator فقط از OpenAI استفاده می‌کند:
+مسیر فعال چت و orchestrator از `AI_PROVIDER` برای انتخاب OpenAI یا Ollama استفاده می‌کند:
 
-- `OPENAI_API_KEY` برای احراز هویت OpenAI
-- `OPENAI_MODEL` برای انتخاب مدل
+- OpenAI: `AI_PROVIDER=openai`، `OPENAI_API_KEY`، `OPENAI_MODEL`
+- Ollama: `AI_PROVIDER=ollama`، `OLLAMA_BASE_URL=http://localhost:11434`، `OLLAMA_MODEL=gpt-oss:20b`
+- حالت پیش‌فرض: اگر `AI_PROVIDER` خالی باشد و `OPENAI_API_KEY` وجود داشته باشد OpenAI استفاده می‌شود؛ در غیر این صورت Ollama با مدل `gpt-oss:20b` استفاده می‌شود.
 - مدل فقط برنامه پیشنهاد می‌دهد؛ بک‌اند SQL را اعتبارسنجی، محدود، اجرا و audit می‌کند.
 
 ---

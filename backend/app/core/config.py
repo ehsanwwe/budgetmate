@@ -8,8 +8,11 @@ ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
+    AI_PROVIDER: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "gpt-oss:20b"
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "5tgb%TGB"
     OTP_MOCK_CODE: str = "123456"

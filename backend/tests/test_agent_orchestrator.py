@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,11 +20,12 @@ from app.routers import chat as chat_router
 from app.services.agent_orchestrator.db_world import build_db_world
 from app.services.agent_orchestrator.date_utils import local_month_range, local_today, parse_relative_date
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
+from app.services.agent_orchestrator.planner import AgentPlanner
 from app.services.agent_orchestrator.sql_executor import SqlExecutor
 from app.services.agent_orchestrator.sql_validator import SqlValidator
 from app.services.agent_orchestrator.types import AgentFinalResponse, AgentOperationType, AgentPlan, AgentPlanStep
 from app.services.agent_orchestrator.value_normalizer import normalize_amount
-from app.services.ai import OpenAIProviderError, resolve_ai_provider
+from app.services.ai import LLMProviderConfigError, OllamaProvider, OpenAIProvider, get_llm_provider, resolve_ai_provider
 
 
 @pytest.fixture()
@@ -102,25 +104,65 @@ def test_db_world_exposes_only_allowed_tables_and_columns(db):
     assert {"select", "insert", "update"}.issubset(memory_ops)
 
 
-def test_openai_provider_is_only_active_provider(monkeypatch):
+def test_ai_provider_openai_with_api_key_selects_openai(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "openai")
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
+    provider = get_llm_provider()
+    assert isinstance(provider, OpenAIProvider)
     assert resolve_ai_provider() == ("openai", "gpt-test")
+
+
+def test_ai_provider_openai_without_api_key_fails_clearly(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
+    with pytest.raises(LLMProviderConfigError, match="OPENAI_API_KEY"):
+        get_llm_provider()
+
+
+def test_ai_provider_ollama_selects_ollama(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "ollama")
+    monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434")
+    monkeypatch.setattr(settings, "OLLAMA_MODEL", "gpt-oss:20b")
+    provider = get_llm_provider()
+    assert isinstance(provider, OllamaProvider)
+    assert resolve_ai_provider() == ("ollama", "gpt-oss:20b")
+
+
+def test_missing_ai_provider_with_openai_api_key_selects_openai(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
+    provider = get_llm_provider()
+    assert isinstance(provider, OpenAIProvider)
+    assert resolve_ai_provider() == ("openai", "gpt-test")
+
+
+def test_missing_ai_provider_without_openai_api_key_selects_default_ollama(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "OLLAMA_BASE_URL", "")
+    monkeypatch.setattr(settings, "OLLAMA_MODEL", "")
+    provider = get_llm_provider()
+    assert isinstance(provider, OllamaProvider)
+    assert provider.base_url == "http://localhost:11434"
+    assert provider.model == "gpt-oss:20b"
 
 
 def test_openai_key_alias_is_ignored(monkeypatch):
     monkeypatch.setenv("OPENAI" + "_KEY", "sk-ignored")
+    monkeypatch.setattr(settings, "AI_PROVIDER", "")
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
-    monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
-    with pytest.raises(OpenAIProviderError):
-        resolve_ai_provider()
+    monkeypatch.setattr(settings, "OLLAMA_MODEL", "gpt-oss:20b")
+    provider = get_llm_provider()
+    assert isinstance(provider, OllamaProvider)
 
 
-def test_missing_openai_key_fails_clearly(monkeypatch):
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
-    monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
-    with pytest.raises(OpenAIProviderError, match="OPENAI_API_KEY"):
-        resolve_ai_provider()
+def test_legacy_provider_is_never_selected(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "open" + "claw")
+    with pytest.raises(LLMProviderConfigError, match="AI_PROVIDER"):
+        get_llm_provider()
 
 
 def test_no_legacy_provider_runtime_symbols_in_ai_service():
@@ -130,6 +172,77 @@ def test_no_legacy_provider_runtime_symbols_in_ai_service():
     legacy_provider = "open" + "claw"
     assert legacy_provider not in source
     assert "agents/main/chat" not in source
+
+
+def _plan_json(intent: str = "mocked_provider") -> str:
+    return json.dumps(
+        {
+            "intent": intent,
+            "language": "fa",
+            "reasoning_summary_for_backend_only": "mock",
+            "requires_db": False,
+            "steps": [],
+            "final_response_hint": "پاسخ تست",
+            "confidence": 0.9,
+        },
+        ensure_ascii=False,
+    )
+
+
+def test_planner_can_use_mocked_openai_provider(monkeypatch):
+    async def fake_completion(messages, require_json=False):
+        assert require_json is True
+        assert any("Safe DB World" in message["content"] for message in messages)
+        return _plan_json("mocked_openai")
+
+    import app.services.agent_orchestrator.planner as planner_module
+
+    monkeypatch.setattr(planner_module, "get_ai_chat_completion", fake_completion)
+    plan = asyncio.run(AgentPlanner().plan("tables", "لیست اهداف من و بده", {"user": {"id": 1}}))
+    assert plan.intent == "mocked_openai"
+    assert plan.final_response_hint == "پاسخ تست"
+
+
+def test_planner_can_use_mocked_ollama_provider_with_json_extraction(monkeypatch):
+    async def fake_completion(messages, require_json=False):
+        assert require_json is True
+        return "متن اضافه قبل از JSON\n" + _plan_json("mocked_ollama") + "\nمتن اضافه بعد از JSON"
+
+    import app.services.agent_orchestrator.planner as planner_module
+
+    monkeypatch.setattr(planner_module, "get_ai_chat_completion", fake_completion)
+    plan = asyncio.run(AgentPlanner().plan("tables", "لیست اهداف من و بده", {"user": {"id": 1}}))
+    assert plan.intent == "mocked_ollama"
+    assert plan.final_response_hint == "پاسخ تست"
+
+
+def test_invalid_ollama_json_triggers_repair(monkeypatch):
+    calls = []
+
+    async def fake_completion(messages, require_json=False):
+        calls.append(messages)
+        if len(calls) == 1:
+            return "not json"
+        assert messages[-1]["content"] == "Repair your previous answer. Return valid AgentPlan JSON only."
+        return _plan_json("repaired_ollama")
+
+    import app.services.agent_orchestrator.planner as planner_module
+
+    monkeypatch.setattr(planner_module, "get_ai_chat_completion", fake_completion)
+    plan = asyncio.run(AgentPlanner().plan("tables", "لیست اهداف من و بده", {"user": {"id": 1}}))
+    assert plan.intent == "repaired_ollama"
+    assert len(calls) == 2
+
+
+def test_active_orchestrator_uses_selected_provider_through_planner(db, monkeypatch):
+    async def fake_completion(messages, require_json=False):
+        return _plan_json("selected_provider_path")
+
+    import app.services.agent_orchestrator.planner as planner_module
+
+    monkeypatch.setattr(planner_module, "get_ai_chat_completion", fake_completion)
+    result = asyncio.run(AgentOrchestrator().run(db, user(db), "لیست اهداف من و بده"))
+    assert result.message == "پاسخ تست"
 
 
 def test_orchestrator_uses_planner_for_income_registration(db):
