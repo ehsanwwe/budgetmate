@@ -8,14 +8,14 @@ from app.core.auth import get_current_user
 from app.models.user import User
 from app.models.chat import ChatMessage, MessageRole
 from app.schemas.chat import ChatMessageIn, ChatReply, ChatHistoryResponse, ChatMessageOut
-from app.services.finance_agent import handle_finance_message
 from app.services.billing import INSUFFICIENT_TOKENS_MESSAGE, consume_chat_tokens, ensure_wallet
 from app.services.token_meter import estimate_tokens, estimate_chat_usage
 from app.services.stt import transcribe_audio
-from app.services.ai_actions import process_ai_reply
+from app.services.agent_orchestrator import AgentOrchestrator
 import json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+orchestrator = AgentOrchestrator()
 
 
 def _save_message(db: Session, user_id: int, role: MessageRole, content: str) -> ChatMessage:
@@ -51,8 +51,14 @@ async def send_message(
 
     history = _get_history(db, current_user.id)
     _save_message(db, current_user.id, MessageRole.user, body.content)
-    raw_reply = await handle_finance_message(body.content, current_user, db, history=history)
-    reply = process_ai_reply(raw_reply, db, current_user)
+    final = await orchestrator.run(
+        db,
+        current_user,
+        body.content,
+        history=history,
+        chat_mode=getattr(current_user, "chat_mode", "normal"),
+    )
+    reply = final.message
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 
     usage = estimate_chat_usage(body.content, reply)
@@ -87,12 +93,16 @@ async def stream_message(
     history = _get_history(db, current_user.id)
 
     async def event_generator():
-        raw_reply = await handle_finance_message(user_content, current_user, db, history=history)
-        # Stream the raw text word-by-word so the frontend can show progress
-        for word in raw_reply.split(" "):
+        final = await orchestrator.run(
+            db,
+            current_user,
+            user_content,
+            history=history,
+            chat_mode=getattr(current_user, "chat_mode", "normal"),
+        )
+        final_reply = final.message
+        for word in final_reply.split(" "):
             yield f"data: {json.dumps({'chunk': word + ' '}, ensure_ascii=False)}\n\n"
-        # Process action blocks (may execute DB writes), then emit canonical final text
-        final_reply = process_ai_reply(raw_reply, db, current_user)
         yield f"event: complete\ndata: {json.dumps({'text': final_reply}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
         _save_message(db, current_user.id, MessageRole.user, user_content)
@@ -157,8 +167,14 @@ async def voice_message(
 
     history = _get_history(db, current_user.id)
     _save_message(db, current_user.id, MessageRole.user, transcript)
-    raw_reply = await handle_finance_message(transcript, current_user, db, history=history)
-    reply = process_ai_reply(raw_reply, db, current_user)
+    final = await orchestrator.run(
+        db,
+        current_user,
+        transcript,
+        history=history,
+        chat_mode=getattr(current_user, "chat_mode", "normal"),
+    )
+    reply = final.message
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
 
     usage = estimate_chat_usage(transcript, reply)

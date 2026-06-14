@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Deprecated compatibility path. Chat endpoints now use
+# app.services.agent_orchestrator instead of hardcoded category hints/actions.
+
 import json
 import re
 from datetime import date

@@ -1,4 +1,8 @@
-"""Post-processing for AI replies: extract JSON action blocks, execute them, strip from visible text."""
+"""Deprecated compatibility path for legacy JSON action blocks.
+
+Chat endpoints now use app.services.agent_orchestrator. Do not route new chat
+traffic through this module.
+"""
 from __future__ import annotations
 
 import json

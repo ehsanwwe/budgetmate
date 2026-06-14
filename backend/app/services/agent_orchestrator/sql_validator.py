@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.services.agent_orchestrator.table_policy import FORBIDDEN_TABLES, get_policy
+from app.services.agent_orchestrator.types import AgentOperationType, SqlValidationResult
+
+_DANGEROUS = re.compile(
+    r"\b(drop|delete|alter|truncate|create|replace|attach|detach|pragma|vacuum|update)\b",
+    re.IGNORECASE,
+)
+_COMMENT = re.compile(r"(--|/\*|\*/|#)")
+_SELECT_RE = re.compile(
+    r"^\s*select\s+(?P<cols>.+?)\s+from\s+(?P<table>[a-zA-Z_][\w]*)\b(?P<rest>.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_INSERT_RE = re.compile(
+    r"^\s*insert\s+into\s+(?P<table>[a-zA-Z_][\w]*)\s*\((?P<cols>[^)]+)\)\s*values\s*\((?P<values>[^)]+)\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_PARAM_RE = re.compile(r":[a-zA-Z_][\w]*")
+_LIMIT_RE = re.compile(r"\blimit\s+(\d+)\b", re.IGNORECASE)
+
+
+class SqlValidator:
+    def validate(
+        self,
+        operation_type: AgentOperationType,
+        table_name: str | None,
+        sql: str | None,
+        params: dict[str, Any] | None = None,
+    ) -> SqlValidationResult:
+        params = params or {}
+        if operation_type not in {AgentOperationType.select, AgentOperationType.insert}:
+            return self._reject("unknown or non-SQL operation type")
+        if not sql or not isinstance(sql, str):
+            return self._reject("missing SQL")
+        if ";" in sql.strip().rstrip(";") or sql.count(";") > 0:
+            return self._reject("multiple statements or semicolons are not allowed")
+        if _COMMENT.search(sql):
+            return self._reject("SQL comments are not allowed")
+        if _DANGEROUS.search(sql):
+            return self._reject("destructive or administrative SQL is not allowed")
+        if not isinstance(params, dict):
+            return self._reject("params must be an object")
+        if "user_id" in {k.lower() for k in params.keys()}:
+            return self._reject("LLM-provided user_id is not allowed")
+
+        if operation_type == AgentOperationType.select:
+            try:
+                return self._validate_select(table_name, sql, params)
+            except ValueError as exc:
+                return self._reject(str(exc))
+        try:
+            return self._validate_insert(table_name, sql, params)
+        except ValueError as exc:
+            return self._reject(str(exc))
+
+    def _validate_select(self, requested_table: str | None, sql: str, params: dict[str, Any]) -> SqlValidationResult:
+        match = _SELECT_RE.match(sql)
+        if not match:
+            return self._reject("only simple SELECT statements are allowed")
+        table = match.group("table").lower()
+        if requested_table and table != requested_table.lower():
+            return self._reject("step table_name does not match SQL table")
+        policy = get_policy(table)
+        if not policy or table in FORBIDDEN_TABLES or not policy.allowed_select or policy.system_only:
+            return self._reject("SELECT from this table is forbidden", table)
+
+        columns = self._extract_select_columns(match.group("cols"))
+        if not columns:
+            return self._reject("no selectable columns found", table)
+        for col in columns:
+            if col == "*":
+                return self._reject("SELECT * is not allowed", table)
+            base = col.split(".", 1)[-1]
+            if base not in policy.selectable_columns and base not in {"count", "sum"}:
+                return self._reject(f"column {base} is not selectable", table)
+
+        self._validate_params_are_used(sql, params)
+        limit_match = _LIMIT_RE.search(sql)
+        limit = int(limit_match.group(1)) if limit_match else policy.max_select_rows
+        limit = min(limit, policy.max_select_rows)
+        return SqlValidationResult(
+            allowed=True,
+            operation_type=AgentOperationType.select,
+            table_name=table,
+            sql=sql.strip(),
+            params=params,
+            columns=columns,
+            limit=limit,
+        )
+
+    def _validate_insert(self, requested_table: str | None, sql: str, params: dict[str, Any]) -> SqlValidationResult:
+        match = _INSERT_RE.match(sql)
+        if not match:
+            return self._reject("only simple parameterized INSERT statements are allowed")
+        table = match.group("table").lower()
+        if requested_table and table != requested_table.lower():
+            return self._reject("step table_name does not match SQL table", table)
+        policy = get_policy(table)
+        if not policy or table in FORBIDDEN_TABLES or not policy.allowed_insert or policy.system_only:
+            return self._reject("INSERT into this table is forbidden", table)
+
+        columns = [c.strip().lower() for c in match.group("cols").split(",")]
+        values = [v.strip() for v in match.group("values").split(",")]
+        if len(columns) != len(values):
+            return self._reject("INSERT columns and values do not match", table)
+        if "user_id" in columns:
+            return self._reject("LLM cannot set user_id", table)
+        for col in columns:
+            if col not in policy.insertable_columns or col in policy.forbidden_columns:
+                return self._reject(f"column {col} is not insertable", table)
+        for value in values:
+            if not _PARAM_RE.fullmatch(value):
+                return self._reject("INSERT values must be named parameters only", table)
+        self._validate_params_are_used(sql, params)
+        return SqlValidationResult(
+            allowed=True,
+            operation_type=AgentOperationType.insert,
+            table_name=table,
+            sql=sql.strip(),
+            params=params,
+            columns=columns,
+        )
+
+    def _extract_select_columns(self, raw: str) -> list[str]:
+        cols: list[str] = []
+        for part in raw.split(","):
+            token = part.strip()
+            lower = token.lower()
+            if lower.startswith("sum("):
+                inner = re.search(r"sum\s*\(\s*([a-zA-Z_][\w.]*)\s*\)", lower)
+                cols.append(inner.group(1).split(".")[-1] if inner else "sum")
+                continue
+            if lower.startswith("count("):
+                cols.append("count")
+                continue
+            token = re.split(r"\s+as\s+|\s+", token, flags=re.IGNORECASE)[0]
+            cols.append(token.split(".")[-1].lower())
+        return cols
+
+    def _validate_params_are_used(self, sql: str, params: dict[str, Any]) -> None:
+        used = {p[1:] for p in _PARAM_RE.findall(sql)}
+        extra = set(params) - used
+        if extra:
+            raise ValueError(f"unused SQL params: {', '.join(sorted(extra))}")
+
+    def _reject(self, reason: str, table: str | None = None) -> SqlValidationResult:
+        return SqlValidationResult(allowed=False, table_name=table, rejected_reason=reason)

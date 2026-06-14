@@ -317,6 +317,39 @@ async def get_ai_reply(
     return FALLBACK_MESSAGE
 
 
+async def get_ai_chat_completion(messages: list[dict], require_json: bool = False) -> str:
+    """Low-level provider call for backend-controlled prompts.
+
+    This bypasses the legacy visible chat/action prompt so orchestrators can
+    send their own strict system messages while reusing the configured provider
+    and model waterfall.
+    """
+    for model in [settings.PRIMARY_MODEL] + settings.fallback_models_list:
+        try:
+            provider = settings.AI_PROVIDER
+            if "/" in model:
+                prefix = model.split("/", 1)[0]
+                if prefix == "ollama":
+                    provider = "ollama"
+                elif prefix == "openai":
+                    provider = "openai"
+                else:
+                    provider = "openclaw"
+
+            reply = None
+            if provider == "openclaw":
+                reply = await _try_openclaw(messages, model)
+            elif provider == "ollama":
+                reply = await _try_ollama(messages, model.split("/", 1)[-1])
+
+            if reply:
+                return reply
+        except Exception as exc:
+            logger.error("Model %s failed: %s", model, exc)
+
+    return "{}" if require_json else FALLBACK_MESSAGE
+
+
 async def stream_ai_reply(
     user_message: str,
     context: Optional[dict] = None,

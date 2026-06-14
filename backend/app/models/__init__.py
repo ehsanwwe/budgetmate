@@ -6,6 +6,7 @@ from app.models.transaction import Transaction
 from app.models.goal import Goal
 from app.models.chat import ChatMessage
 from app.models.activity import ActivityLog
+from app.models.agent_audit import AgentSqlAuditLog
 from app.models.billing import TokenWallet, TokenUsageLog, TokenPurchase, UserSubscription
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "Goal",
     "ChatMessage",
     "ActivityLog",
+    "AgentSqlAuditLog",
     "TokenWallet",
     "TokenUsageLog",
     "TokenPurchase",
