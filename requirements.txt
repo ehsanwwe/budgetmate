@@ -11,3 +11,4 @@ httpx
 python-dotenv
 sse-starlette
 python-multipart
+pytest
