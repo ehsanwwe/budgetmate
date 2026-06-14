@@ -89,6 +89,26 @@ POLICIES: dict[str, TablePolicy] = {
         business_name="system audit log for agent database operations",
         system_only=True,
     ),
+    "financial_personas": TablePolicy(
+        table_name="financial_personas",
+        business_name="system-managed personal CFO persona",
+        system_only=True,
+    ),
+    "financial_memories": TablePolicy(
+        table_name="financial_memories",
+        business_name="system-managed personal CFO memory",
+        system_only=True,
+    ),
+    "behavior_insights": TablePolicy(
+        table_name="behavior_insights",
+        business_name="system-managed behavior insights",
+        system_only=True,
+    ),
+    "persona_update_logs": TablePolicy(
+        table_name="persona_update_logs",
+        business_name="system persona update audit log",
+        system_only=True,
+    ),
     "admin_users": TablePolicy(
         table_name="admin_users",
         business_name="admin authentication records",
@@ -101,6 +121,10 @@ FORBIDDEN_TABLES = {
     "admin_users",
     "activity_logs",
     "agent_sql_audit_logs",
+    "financial_personas",
+    "financial_memories",
+    "behavior_insights",
+    "persona_update_logs",
     "token_wallets",
     "token_usage_logs",
     "token_purchases",

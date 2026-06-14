@@ -14,6 +14,58 @@ OPENCLAW_PATHS = [
     "/api/v1/chat/completions",
 ]
 
+
+def _strip_provider(model: str) -> str:
+    return model.split("/", 1)[-1] if "/" in model else model
+
+
+def _openai_model_candidates() -> list[str]:
+    candidates: list[str] = []
+    if settings.OPENAI_MODEL:
+        candidates.append(settings.OPENAI_MODEL)
+    for model in [settings.PRIMARY_MODEL] + settings.fallback_models_list:
+        if model.startswith("openai/"):
+            candidates.append(_strip_provider(model))
+    return [model for index, model in enumerate(candidates) if model and model not in candidates[:index]]
+
+
+def resolve_ai_provider(model: str | None = None) -> tuple[str, str]:
+    explicit = (settings.AI_PROVIDER or "").strip().lower()
+    if explicit == "openai":
+        if not settings.OPENAI_API_KEY:
+            raise RuntimeError("AI_PROVIDER=openai requires OPENAI_API_KEY")
+        candidates = _openai_model_candidates()
+        if not candidates:
+            raise RuntimeError("OpenAI provider requires OPENAI_MODEL or an openai/* model")
+        return "openai", candidates[0]
+    if explicit in {"openclaw", "ollama"}:
+        return explicit, _strip_provider(model or settings.PRIMARY_MODEL)
+    if explicit:
+        logger.warning("Unknown AI_PROVIDER=%s; using automatic provider resolution", explicit)
+
+    if settings.OPENAI_API_KEY:
+        candidates = _openai_model_candidates()
+        if candidates:
+            return "openai", candidates[0]
+        raise RuntimeError("OPENAI_API_KEY is configured but no OpenAI model is configured")
+
+    selected = model or settings.PRIMARY_MODEL
+    if selected.startswith("ollama/"):
+        return "ollama", _strip_provider(selected)
+    if selected.startswith("openai/"):
+        if not settings.OPENAI_API_KEY:
+            raise RuntimeError("OpenAI model selected but OPENAI_API_KEY is not configured")
+        return "openai", _strip_provider(selected)
+    return "openclaw", selected
+
+
+def log_ai_provider_config() -> None:
+    try:
+        provider, model = resolve_ai_provider(settings.PRIMARY_MODEL)
+        logger.info("AI provider configured: provider=%s model=%s", provider, model)
+    except Exception as exc:
+        logger.warning("AI provider configuration issue: %s", exc)
+
 INCOME_RANGE_LABELS = {
     "lt10": "کمتر از ۱۰ میلیون تومان",
     "10to20": "بین ۱۰ تا ۲۰ میلیون تومان",
@@ -278,6 +330,25 @@ async def _try_ollama(messages: list, model: str) -> Optional[str]:
     return None
 
 
+async def _try_openai(messages: list, model: str) -> Optional[str]:
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is required for OpenAI")
+    headers = {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    body = {"model": model, "messages": messages, "stream": False}
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post("https://api.openai.com/v1/chat/completions", json=body, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"]
+            logger.warning("OpenAI returned %s: %s", resp.status_code, resp.text[:500])
+    except Exception as exc:
+        logger.warning("OpenAI error: %s", exc)
+    return None
+
+
 async def get_ai_reply(
     user_message: str,
     context: Optional[dict] = None,
@@ -293,21 +364,15 @@ async def get_ai_reply(
 
     for model in [settings.PRIMARY_MODEL] + settings.fallback_models_list:
         try:
-            provider = settings.AI_PROVIDER
-            if "/" in model:
-                prefix = model.split("/", 1)[0]
-                if prefix == "ollama":
-                    provider = "ollama"
-                elif prefix == "openai":
-                    provider = "openai"
-                else:
-                    provider = "openclaw"
+            provider, provider_model = resolve_ai_provider(model)
 
             reply = None
             if provider == "openclaw":
                 reply = await _try_openclaw(messages, model)
             elif provider == "ollama":
-                reply = await _try_ollama(messages, model.split("/", 1)[-1])
+                reply = await _try_ollama(messages, provider_model)
+            elif provider == "openai":
+                reply = await _try_openai(messages, provider_model)
 
             if reply:
                 return reply
@@ -326,21 +391,15 @@ async def get_ai_chat_completion(messages: list[dict], require_json: bool = Fals
     """
     for model in [settings.PRIMARY_MODEL] + settings.fallback_models_list:
         try:
-            provider = settings.AI_PROVIDER
-            if "/" in model:
-                prefix = model.split("/", 1)[0]
-                if prefix == "ollama":
-                    provider = "ollama"
-                elif prefix == "openai":
-                    provider = "openai"
-                else:
-                    provider = "openclaw"
+            provider, provider_model = resolve_ai_provider(model)
 
             reply = None
             if provider == "openclaw":
                 reply = await _try_openclaw(messages, model)
             elif provider == "ollama":
-                reply = await _try_ollama(messages, model.split("/", 1)[-1])
+                reply = await _try_ollama(messages, provider_model)
+            elif provider == "openai":
+                reply = await _try_openai(messages, provider_model)
 
             if reply:
                 return reply

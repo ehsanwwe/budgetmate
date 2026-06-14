@@ -23,10 +23,17 @@ from app.core.auth import get_current_user
 from app.db import get_db
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.db_world import build_db_world
+from app.services.agent_orchestrator.date_utils import local_month_range, local_today, parse_relative_date
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
 from app.services.agent_orchestrator.sql_executor import SqlExecutor
 from app.services.agent_orchestrator.sql_validator import SqlValidator
 from app.services.agent_orchestrator.types import AgentFinalResponse, AgentOperationType, AgentPlan, AgentPlanStep
+from app.services.ai import resolve_ai_provider
+from app.core.config import settings
+from app.models.personal_cfo import BehaviorInsight, FinancialMemory, FinancialPersona
+from app.services.personal_cfo.behavior_service import detect_basic_behavior_signals
+from app.services.personal_cfo.memory_service import create_memory
+from app.services.personal_cfo.persona_service import get_or_create_persona
 
 
 @pytest.fixture()
@@ -291,5 +298,157 @@ def test_chat_endpoint_and_stream_return_clean_text(db, monkeypatch):
         assert "ثبت شد" in body
         assert "SELECT" not in body
         assert "```json" not in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_provider_selection_prefers_openai_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(settings, "OPENAI_MODEL", "gpt-test")
+    provider, model = resolve_ai_provider()
+    assert provider == "openai"
+    assert model == "gpt-test"
+
+
+def test_provider_selection_ignores_openai_key_alias(monkeypatch):
+    legacy_alias = "OPENAI" + "_KEY"
+    monkeypatch.setenv(legacy_alias, "sk-ignored")
+    monkeypatch.setattr(settings, "AI_PROVIDER", "")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(settings, "OPENAI_MODEL", "")
+    monkeypatch.setattr(settings, "PRIMARY_MODEL", "plain-model")
+    provider, _ = resolve_ai_provider()
+    assert provider == "openclaw"
+
+
+def test_provider_selection_allows_explicit_openclaw(monkeypatch):
+    monkeypatch.setattr(settings, "AI_PROVIDER", "openclaw")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    provider, _ = resolve_ai_provider("plain-model")
+    assert provider == "openclaw"
+
+
+def test_deterministic_income_chat_creates_visible_income(db):
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "امروز 5 میلیون پول پروژه گرفتم"))
+    assert "ثبت شد" in result.message
+    txn = db.query(Transaction).filter(Transaction.user_id == 1, Transaction.type == TransactionType.income).first()
+    assert txn is not None
+    assert txn.amount == 5_000_000
+    assert txn.description == "درآمد پروژه"
+    visible = db.query(Transaction).filter(Transaction.user_id == 1, Transaction.type == TransactionType.income).all()
+    assert [row.id for row in visible] == [txn.id]
+
+
+def test_weekly_income_response_is_deterministic_and_has_no_placeholder(db):
+    db.add(Transaction(user_id=1, amount=5_000_000, type=TransactionType.income, description="project", date=local_today()))
+    db.commit()
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "این هفته چقدر درآمد داشتم"))
+    assert "5,000,000" in result.message
+    assert "[total_amount]" not in result.message
+    assert "[" not in result.message
+
+
+def test_previous_month_top_category_uses_real_rows(db):
+    start, _ = local_month_range(previous=True)
+    db.add(Transaction(user_id=1, category_id=1, amount=200_000, type=TransactionType.expense, description="food", date=start))
+    db.commit()
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "بیشترین خرج تو ماه گذشته مربوط به چی بوده"))
+    assert "Food" in result.message
+    assert "200,000" in result.message
+    assert "[name]" not in result.message
+    assert "[total_amount]" not in result.message
+
+
+def test_no_data_top_category_has_clean_fallback(db):
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "بیشترین خرج تو ماه گذشته مربوط به چی بوده"))
+    assert "ثبت نشده" in result.message
+    assert "[" not in result.message
+
+
+def test_timezone_relative_date_parsing(monkeypatch):
+    monkeypatch.setattr(settings, "APP_TIMEZONE", "Asia/Tehran")
+    assert parse_relative_date("امروز") == local_today()
+    assert parse_relative_date("دیروز").isoformat() < parse_relative_date("امروز").isoformat()
+
+
+def test_user_scope_for_deterministic_totals(db):
+    db.add(Transaction(user_id=2, amount=9_999_999, type=TransactionType.expense, description="other", date=local_today()))
+    db.commit()
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "این ماه چقدر خرج کردم"))
+    assert "9,999,999" not in result.message
+    assert "ثبت نشده" in result.message or "0" in result.message
+
+
+def test_get_or_create_persona_is_one_per_user(db):
+    first = get_or_create_persona(db, 1)
+    second = get_or_create_persona(db, 1)
+    assert first.id == second.id
+    assert db.query(FinancialPersona).filter(FinancialPersona.user_id == 1).count() == 1
+
+
+def test_memory_creation_is_user_scoped(db):
+    memory = create_memory(db, 1, "preference", "test", {"value": "x"})
+    assert memory.user_id == 1
+    assert db.query(FinancialMemory).filter(FinancialMemory.user_id == 2).count() == 0
+
+
+def test_stress_spending_phrase_creates_insight(db):
+    detect_basic_behavior_signals(db, 1, "وقتی استرس دارم خرید میکنم", [])
+    insight = db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "stress_spending").first()
+    assert insight is not None
+    memory = db.query(FinancialMemory).filter(FinancialMemory.user_id == 1, FinancialMemory.memory_type == "behavioral_trigger").first()
+    assert memory is not None
+
+
+def test_debt_fear_updates_persona_and_insight(db):
+    detect_basic_behavior_signals(db, 1, "من از بدهی خیلی میترسم", [])
+    persona = get_or_create_persona(db, 1)
+    assert persona.debt_sensitivity == "high"
+    assert db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "debt_anxiety").count() == 1
+
+
+def test_end_of_month_shortage_creates_memory_or_insight(db):
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([])).run(db, user(db), "من آخر ماه همیشه پول کم میارم"))
+    assert "آخر ماه" in result.message
+    assert db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "liquidity_pressure").count() == 1
+    assert db.query(FinancialMemory).filter(FinancialMemory.user_id == 1).count() >= 1
+
+
+def test_orchestrator_includes_personal_cfo_context(db):
+    create_memory(db, 1, "preference", "test preference", {"value": "cash"})
+
+    class CapturingPlanner:
+        def __init__(self):
+            self.context = None
+
+        async def plan(self, db_world, user_message, finance_context, **kwargs):
+            self.context = finance_context
+            return AgentPlan(intent="noop", requires_db=False, steps=[], final_response_hint="باشه")
+
+    planner = CapturingPlanner()
+    asyncio.run(AgentOrchestrator(planner=planner).run(db, user(db), "سلام"))
+    assert "personal_cfo" in planner.context
+    assert planner.context["personal_cfo"]["memories"]
+
+
+def test_personal_cfo_endpoints_are_user_scoped(db):
+    create_memory(db, 2, "preference", "other", {"secret": "hidden"})
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user(db)
+    client = TestClient(app)
+    try:
+        persona = client.get("/api/v1/personal-cfo/persona")
+        assert persona.status_code == 200
+        memories = client.get("/api/v1/personal-cfo/memories")
+        assert memories.status_code == 200
+        assert all(item["user_id"] == 1 for item in memories.json())
+        insights = client.get("/api/v1/personal-cfo/behavior-insights")
+        assert insights.status_code == 200
+        assert all(item["user_id"] == 1 for item in insights.json())
     finally:
         app.dependency_overrides.clear()

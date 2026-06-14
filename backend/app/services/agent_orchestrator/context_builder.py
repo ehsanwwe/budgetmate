@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.services.finance_context import build_finance_context
+from app.services.personal_cfo.cfo_context_builder import build_cfo_context
 
 
 def build_agent_context(user: User, db: Session) -> dict:
     context = build_finance_context(user, db)
-    return {
+    payload = {
         "user": {
             "id": user.id,
             "name": user.display_name or user.name,
@@ -27,3 +28,5 @@ def build_agent_context(user: User, db: Session) -> dict:
         "active_goals": context["active_goals"][:5],
         "recent_transactions": context["recent_transactions"][:5],
     }
+    payload["personal_cfo"] = build_cfo_context(db, user.id)
+    return payload

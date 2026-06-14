@@ -10,9 +10,10 @@ ENV_FILE = BACKEND_DIR / ".env"
 class Settings(BaseSettings):
     OPENCLAW_URL: str = "http://188.136.214.220:18789"
     OPENCLAW_TOKEN: str = ""
-    AI_PROVIDER: str = "openclaw"
+    AI_PROVIDER: str = ""
     PRIMARY_MODEL: str = "ollama/gemma4:26b"
     FALLBACK_MODELS: str = "ollama/qwen3-coder:30b,ollama/qwen3-coder:latest,ollama/gemma3:12b,ollama/qwen3:14b,openai/gpt-4o-mini"
+    OPENAI_MODEL: str = ""
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "5tgb%TGB"
     OTP_MOCK_CODE: str = "123456"
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     STARTER_FREE_TOKENS: int = 20000
     OPENAI_API_KEY: str = ""
+    APP_TIMEZONE: str = "Asia/Tehran"
 
     @field_validator("DATABASE_URL")
     @classmethod

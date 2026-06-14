@@ -178,9 +178,12 @@ Create `backend/.env`:
 ```env
 OPENCLAW_URL=http://your-openclaw-host:port
 OPENCLAW_TOKEN=your_token_here
-AI_PROVIDER=openclaw
+AI_PROVIDER=
+OPENAI_API_KEY=
+OPENAI_MODEL=
 PRIMARY_MODEL=ollama/gemma4:26b
 FALLBACK_MODELS=ollama/qwen3-coder:30b,ollama/qwen3-coder:latest,ollama/gemma3:12b,ollama/qwen3:14b,openai/gpt-4o-mini
+APP_TIMEZONE=Asia/Tehran
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_admin_password
 OTP_MOCK_CODE=123456
@@ -242,9 +245,24 @@ For the admin panel:
 
 ## 🔌 Switching AI Providers
 
-BudgetMate supports three AI providers. Change `AI_PROVIDER` in `backend/.env` and restart the server:
+BudgetMate selects the AI provider in this order:
 
-### Option 1: OpenClaw (default)
+1. `AI_PROVIDER=openai` uses OpenAI and requires `OPENAI_API_KEY`.
+2. If `AI_PROVIDER` is empty and `OPENAI_API_KEY` exists, OpenAI is selected automatically.
+3. `AI_PROVIDER=openclaw` uses OpenClaw only when explicitly requested.
+4. If OpenAI is not configured, the existing OpenClaw/Ollama waterfall remains available.
+
+OpenAI authentication uses only `OPENAI_API_KEY`. `OPENAI_MODEL` is optional; if omitted, the first configured `openai/*` model in the model waterfall is used.
+
+### Option 1: OpenAI
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=
+```
+
+### Option 2: OpenClaw
 
 ```env
 AI_PROVIDER=openclaw
@@ -252,7 +270,7 @@ OPENCLAW_URL=http://your-host:port
 OPENCLAW_TOKEN=your_token
 ```
 
-### Option 2: Local Ollama
+### Option 3: Local Ollama
 
 Make sure Ollama is running:
 
@@ -266,14 +284,6 @@ Then:
 ```env
 AI_PROVIDER=ollama
 PRIMARY_MODEL=gemma4:26b
-```
-
-### Option 3: Anthropic Claude
-
-```env
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-PRIMARY_MODEL=claude-sonnet-4-5
 ```
 
 ---

@@ -11,6 +11,7 @@ from app.models.agent_audit import AgentSqlAuditLog
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
+from app.services.agent_orchestrator.date_utils import parse_relative_date
 from app.services.agent_orchestrator.table_policy import get_policy
 from app.services.agent_orchestrator.types import AgentExecutionResult, AgentOperationType, AgentPlanStep, SqlValidationResult
 
@@ -131,9 +132,9 @@ class SqlExecutor:
             raise ValueError("transaction type must be expense or income")
         tx_date = params.get("date")
         if isinstance(tx_date, str):
-            tx_date = date.fromisoformat(tx_date)
+            tx_date = parse_relative_date(tx_date)
         elif not tx_date:
-            tx_date = date.today()
+            tx_date = parse_relative_date(None)
 
         txn = Transaction(
             user_id=user.id,

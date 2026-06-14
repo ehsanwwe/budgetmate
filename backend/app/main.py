@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import settings
 from app.db import engine, SessionLocal, Base
 from app.core.seed import seed_db
-from app.routers import health, auth, users, budgets, categories, transactions, goals, chat, admin, billing, onboarding
+from app.routers import health, auth, users, budgets, categories, transactions, goals, chat, admin, billing, onboarding, personal_cfo
+from app.services.ai import log_ai_provider_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Import models to ensure they are registered with Base.metadata
-    from app.models import User, AdminUser, Budget, Category, Transaction, Goal, ChatMessage, ActivityLog, AgentSqlAuditLog, TokenWallet, TokenUsageLog, TokenPurchase, UserSubscription
+    from app.models import User, AdminUser, Budget, Category, Transaction, Goal, ChatMessage, ActivityLog, AgentSqlAuditLog, FinancialPersona, FinancialMemory, BehaviorInsight, PersonaUpdateLog, TokenWallet, TokenUsageLog, TokenPurchase, UserSubscription
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created/verified")
 
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 logger.info("CORS origins: %s", settings.cors_origins_list)
+log_ai_provider_config()
 
 PREFIX = "/api/v1"
 
@@ -65,3 +67,4 @@ app.include_router(chat.router, prefix=PREFIX)
 app.include_router(admin.router, prefix=PREFIX)
 app.include_router(billing.router, prefix=PREFIX)
 app.include_router(onboarding.router, prefix=PREFIX)
+app.include_router(personal_cfo.router, prefix=PREFIX)
