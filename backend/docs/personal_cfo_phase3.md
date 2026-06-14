@@ -15,7 +15,7 @@ The existing `goals` table remains the app-level goal table. Phase 3 does not du
 
 ## Agent Access
 
-The OpenAI planner can see only the safe DB World generated from table policy. It may propose inserts into allowed memory/fact/insight/warning/decision tables, but the backend validates allowed columns, injects the authenticated `user_id`, and stores only backend-approved fields.
+The selected LLM planner can see only the safe DB World generated from table policy. It may propose inserts into allowed memory/fact/insight/warning/decision tables, but the backend validates allowed columns, injects the authenticated `user_id`, and stores only backend-approved fields.
 
 The planner must not store secrets, unrelated sensitive personal details, auth data, or admin data.
 
