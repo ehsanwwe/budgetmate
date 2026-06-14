@@ -15,57 +15,57 @@ const BAR_COUNT = 28;
 
 function SimpleMarkdown({ text }: { text: string }) {
   const html = text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/\n/g, "<br/>");
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/\n/g, "<br/>");
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function MessageBubble({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
   const isUser = message.role === "user";
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
-      dir="ltr"
-    >
-      <div className={`flex max-w-[86%] gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-        <Avatar className="h-7 w-7 shrink-0">
-          <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
-            {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-          </AvatarFallback>
-        </Avatar>
-        <div
-          dir="rtl"
-          className={`rounded-2xl px-4 py-2.5 text-right text-sm leading-relaxed ${
-            isUser
-              ? "bg-[#2d1812] text-white rounded-tr-sm"
-              : "bg-white text-[#2d1812] rounded-tl-sm shadow-sm border border-gray-100"
-          }`}
-        >
-          <SimpleMarkdown text={message.content} />
-          {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-current animate-pulse ms-0.5 align-text-bottom" />}
+      <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
+          dir="ltr"
+      >
+        <div className={`flex max-w-[86%] gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+          <Avatar className="h-7 w-7 shrink-0">
+            <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
+              {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+            </AvatarFallback>
+          </Avatar>
+          <div
+              dir="rtl"
+              className={`rounded-2xl px-4 py-2.5 text-right text-sm leading-relaxed ${
+                  isUser
+                      ? "bg-[#2d1812] text-white rounded-tr-sm"
+                      : "bg-white text-[#2d1812] rounded-tl-sm shadow-sm border border-gray-100"
+              }`}
+          >
+            <SimpleMarkdown text={message.content} />
+            {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-current animate-pulse ms-0.5 align-text-bottom" />}
+          </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
   );
 }
 
 function WaveformVisualizer({ bars }: { bars: number[] }) {
   return (
-    <div className="flex items-center justify-center gap-[3px] h-16">
-      {bars.map((h, i) => (
-        <motion.div
-          key={i}
-          animate={{ scaleY: h }}
-          transition={{ duration: 0.08, ease: "easeOut" }}
-          className="w-[3px] rounded-full bg-emerald-500 origin-center"
-          style={{ height: "40px" }}
-        />
-      ))}
-    </div>
+      <div className="flex items-center justify-center gap-[3px] h-16">
+        {bars.map((h, i) => (
+            <motion.div
+                key={i}
+                animate={{ scaleY: h }}
+                transition={{ duration: 0.08, ease: "easeOut" }}
+                className="w-[3px] rounded-full bg-emerald-500 origin-center"
+                style={{ height: "40px" }}
+            />
+        ))}
+      </div>
   );
 }
 
@@ -151,8 +151,11 @@ export default function ChatPage() {
     setStreaming(true);
     setStreamingText("");
 
-    // Track whether the backend started responding — prevents double-submit fallback
+    // Track whether the backend started responding — prevents double-submit fallback.
+    // Keep accumulated outside try so catch can safely show the partial streamed answer
+    // without re-sending the request and creating duplicate DB writes.
     let backendResponded = false;
+    let accumulated = "";
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -164,7 +167,6 @@ export default function ChatPage() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let accumulated = "";
       let currentEventType = "";
 
       while (true) {
@@ -354,172 +356,172 @@ export default function ChatPage() {
   // Loading state
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden" dir="rtl">
-        <div className="shrink-0 h-[57px] border-b bg-white/80" />
-        <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f5f1eb]/40">
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-2xl" />)}
+        <div className="flex h-full min-h-0 flex-col overflow-hidden" dir="rtl">
+          <div className="shrink-0 h-[57px] border-b bg-white/80" />
+          <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f5f1eb]/40">
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-2xl" />)}
+            </div>
           </div>
         </div>
-      </div>
     );
   }
 
   // Empty state — no messages, not in voice mode
   if (messages.length === 0 && !voiceMode) {
     return (
-      <ChatEmptyState
-        firstName={firstName}
-        hasBudget={hasBudget}
-        input={input}
-        onInputChange={setInput}
-        onSend={() => sendMessage()}
-        onPromptClick={(text) => sendMessage(text)}
-        onVoiceModeClick={() => { setVoiceMode(true); setAudioBlob(null); }}
-        streaming={streaming}
-      />
+        <ChatEmptyState
+            firstName={firstName}
+            hasBudget={hasBudget}
+            input={input}
+            onInputChange={setInput}
+            onSend={() => sendMessage()}
+            onPromptClick={(text) => sendMessage(text)}
+            onVoiceModeClick={() => { setVoiceMode(true); setAudioBlob(null); }}
+            streaming={streaming}
+        />
     );
   }
 
   // Normal chat layout (messages exist, or voice mode active)
   return (
-    <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)] " dir="rtl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-            <Bot className="h-4.5 w-4.5 text-emerald-600" />
-          </div>
-          <div>
-            <p className="font-bold text-[#2d1812] text-sm">دستیار مالی</p>
-            <p className="text-[11px] text-gray-400">جیبیار · آنلاین</p>
-          </div>
-        </div>
-        <button onClick={clearHistory} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
-          <Trash2 className="h-4 w-4 text-gray-400" />
-        </button>
-      </div>
-
-      {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
-        ))}
-        {streaming && streamingText && (
-          <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
-        )}
-        {streaming && !streamingText && (
-          <div className="flex w-full justify-start" dir="ltr">
-            <div className="flex gap-2">
-              <Avatar className="h-7 w-7 shrink-0">
-                <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
-              </Avatar>
-              <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
-                {[0, 150, 300].map((d) => (
-                  <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                ))}
-              </div>
+      <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)] " dir="rtl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
+              <Bot className="h-4.5 w-4.5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="font-bold text-[#2d1812] text-sm">دستیار مالی</p>
+              <p className="text-[11px] text-gray-400">جیبیار · آنلاین</p>
             </div>
           </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
+          <button onClick={clearHistory} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <Trash2 className="h-4 w-4 text-gray-400" />
+          </button>
+        </div>
 
-      {/* Input area */}
-      <div className="shrink-0 px-4 pb-4 pt-2 bg-white border-t border-gray-100">
-        <AnimatePresence mode="wait">
-          {!voiceMode ? (
-            /* TEXT MODE */
-            <motion.div
-              key="text"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="flex items-end gap-2"
-            >
-              <button
-                onClick={() => sendMessage()}
-                disabled={!input.trim() || streaming}
-                className="flex-shrink-0 w-10 h-10 rounded-full bg-[#2d1812] text-white flex items-center justify-center disabled:opacity-30 hover:bg-[#3d2218] transition-colors"
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
-
-              <div className="flex-1 relative">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                  placeholder="از من بپرس..."
-                  disabled={streaming}
-                  className="w-full rounded-2xl bg-gray-100 border-0 px-4 py-3 text-sm text-[#2d1812] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 resize-none"
-                />
-              </div>
-
-              <button
-                onClick={() => { setVoiceMode(true); setAudioBlob(null); }}
-                className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-emerald-100 hover:text-emerald-600 transition-colors"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-            </motion.div>
-          ) : (
-            /* VOICE MODE */
-            <motion.div
-              key="voice"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="space-y-3"
-            >
-              <WaveformVisualizer bars={waveformBars} />
-
-              <p className="text-center text-xs text-gray-500">
-                {recording
-                  ? `در حال ضبط… ${formatTime(recordingSecs)}`
-                  : audioBlob
-                  ? "ضبط متوقف شد — ارسال یا لغو؟"
-                  : "روی دکمه بزن تا ضبط شروع شه"}
-              </p>
-
-              <div className="flex items-center justify-center gap-4">
-                <button
-                  onClick={cancelVoice}
-                  className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={recording ? () => stopRecording(true) : startRecording}
-                  className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
-                    recording
-                      ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
-                      : "bg-emerald-500 hover:bg-emerald-600 text-white"
-                  }`}
-                >
-                  {recording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-                </button>
-
-                {audioBlob ? (
-                  <button
-                    onClick={sendVoice}
-                    disabled={sendingVoice}
-                    className="w-10 h-10 rounded-full bg-[#2d1812] text-white flex items-center justify-center hover:bg-[#3d2218] disabled:opacity-40 transition-colors"
-                  >
-                    {sendingVoice
-                      ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      : <Send className="w-4 h-4" />
-                    }
-                  </button>
-                ) : (
-                  <div className="w-10 h-10" />
-                )}
-              </div>
-            </motion.div>
+        {/* Messages */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
+          {messages.map((msg, i) => (
+              <MessageBubble key={i} message={msg} />
+          ))}
+          {streaming && streamingText && (
+              <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
           )}
-        </AnimatePresence>
+          {streaming && !streamingText && (
+              <div className="flex w-full justify-start" dir="ltr">
+                <div className="flex gap-2">
+                  <Avatar className="h-7 w-7 shrink-0">
+                    <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
+                  </Avatar>
+                  <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
+                    {[0, 150, 300].map((d) => (
+                        <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input area */}
+        <div className="shrink-0 px-4 pb-4 pt-2 bg-white border-t border-gray-100">
+          <AnimatePresence mode="wait">
+            {!voiceMode ? (
+                /* TEXT MODE */
+                <motion.div
+                    key="text"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="flex items-end gap-2"
+                >
+                  <button
+                      onClick={() => sendMessage()}
+                      disabled={!input.trim() || streaming}
+                      className="flex-shrink-0 w-10 h-10 rounded-full bg-[#2d1812] text-white flex items-center justify-center disabled:opacity-30 hover:bg-[#3d2218] transition-colors"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex-1 relative">
+                    <input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                        placeholder="از من بپرس..."
+                        disabled={streaming}
+                        className="w-full rounded-2xl bg-gray-100 border-0 px-4 py-3 text-sm text-[#2d1812] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 resize-none"
+                    />
+                  </div>
+
+                  <button
+                      onClick={() => { setVoiceMode(true); setAudioBlob(null); }}
+                      className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-emerald-100 hover:text-emerald-600 transition-colors"
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+                </motion.div>
+            ) : (
+                /* VOICE MODE */
+                <motion.div
+                    key="voice"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="space-y-3"
+                >
+                  <WaveformVisualizer bars={waveformBars} />
+
+                  <p className="text-center text-xs text-gray-500">
+                    {recording
+                        ? `در حال ضبط… ${formatTime(recordingSecs)}`
+                        : audioBlob
+                            ? "ضبط متوقف شد — ارسال یا لغو؟"
+                            : "روی دکمه بزن تا ضبط شروع شه"}
+                  </p>
+
+                  <div className="flex items-center justify-center gap-4">
+                    <button
+                        onClick={cancelVoice}
+                        className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+
+                    <button
+                        onClick={recording ? () => stopRecording(true) : startRecording}
+                        className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
+                            recording
+                                ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                                : "bg-emerald-500 hover:bg-emerald-600 text-white"
+                        }`}
+                    >
+                      {recording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                    </button>
+
+                    {audioBlob ? (
+                        <button
+                            onClick={sendVoice}
+                            disabled={sendingVoice}
+                            className="w-10 h-10 rounded-full bg-[#2d1812] text-white flex items-center justify-center hover:bg-[#3d2218] disabled:opacity-40 transition-colors"
+                        >
+                          {sendingVoice
+                              ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                              : <Send className="w-4 h-4" />
+                          }
+                        </button>
+                    ) : (
+                        <div className="w-10 h-10" />
+                    )}
+                  </div>
+                </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
-    </div>
   );
 }
