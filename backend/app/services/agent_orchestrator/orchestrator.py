@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.models.user import User
 from app.services.agent_orchestrator.context_builder import build_agent_context
 from app.services.agent_orchestrator.db_world import render_db_world
+from app.services.agent_orchestrator.goal_intake import GoalIntakeGate
 from app.services.agent_orchestrator.planner import AgentPlanner
 from app.services.agent_orchestrator.response_composer import ResponseComposer
 from app.services.agent_orchestrator.sql_executor import SqlExecutor, audit_operation
@@ -27,6 +28,12 @@ logger = logging.getLogger(__name__)
 _WRITE_OPS = {AgentOperationType.insert, AgentOperationType.update}
 
 
+class _NullGate:
+    """No-op gate — passes every message through to the orchestrator unchanged."""
+    async def process(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
 class AgentOrchestrator:
     def __init__(
         self,
@@ -34,11 +41,15 @@ class AgentOrchestrator:
         validator: SqlValidator | None = None,
         executor: SqlExecutor | None = None,
         composer: ResponseComposer | None = None,
+        goal_intake_gate: GoalIntakeGate | None = None,
     ):
         self.planner = planner or AgentPlanner()
         self.validator = validator or SqlValidator()
         self.executor = executor or SqlExecutor()
         self.composer = composer or ResponseComposer()
+        # Accepts an explicit gate so callers (e.g. tests) can bypass or stub it.
+        # Defaults to the real GoalIntakeGate for production use.
+        self._gate = goal_intake_gate if goal_intake_gate is not None else GoalIntakeGate()
 
     async def run(
         self,
@@ -50,6 +61,14 @@ class AgentOrchestrator:
     ) -> AgentFinalResponse:
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
+
+        # Goal intake gate runs first — intercepts goal-like messages and manages
+        # the decision gate (collect missing info → add vs consult → advisory or insert).
+        gate_response = await self._gate.process(
+            db, user, user_message, history, finance_context
+        )
+        if gate_response is not None:
+            return gate_response
         if chat_mode:
             finance_context.setdefault("user", {})["chat_mode"] = chat_mode
 

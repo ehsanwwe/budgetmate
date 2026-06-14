@@ -14,6 +14,7 @@ from app.models import AgentSqlAuditLog, Category, FutureCommitment, Goal, Trans
 from app.models.agent_idempotency import AgentOperationEvent
 from app.models.transaction import TransactionType
 from app.services.agent_orchestrator.date_utils import local_today
+from app.services.agent_orchestrator.goal_intake import NullGoalIntakeGate
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
 from app.services.agent_orchestrator.sql_executor import SqlExecutor, _compute_fingerprint
 from app.services.agent_orchestrator.sql_validator import SqlValidator
@@ -24,6 +25,8 @@ from app.services.agent_orchestrator.types import (
     AgentPlanStep,
     SourceScope,
 )
+
+_NULL_GATE = NullGoalIntakeGate()
 
 
 @pytest.fixture()
@@ -134,7 +137,7 @@ def test_history_context_write_is_rejected_by_orchestrator(db):
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="پاسخ داده شد.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(
         db, current_user(db), "سلام"
     ))
     # Nothing was inserted
@@ -156,7 +159,7 @@ def test_greeting_with_history_does_not_replay_old_goal(db):
         {"role": "user", "content": "ماشین لباسشویی میخام بخرم تا آخر خرداد ۴۷ میلیون"},
         {"role": "assistant", "content": "هدف خرید ماشین لباسشویی با مبلغ ۴۷ میلیون ثبت شد."},
     ]
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "سلام", history=history
     ))
     # No goal should be created from history
@@ -190,7 +193,7 @@ def test_deadline_question_does_not_replay_prior_update(db):
         final_response_hint="موعد این هدف تا ۱۶ خرداد ۱۴۰۵ فعال است.موعد خرید لپتاپ به یک ماه بعد منتقل شد",
     )
     final_plan = AgentPlan(intent="final", final_response_hint="پاسخ داده شد.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(
         db, current_user(db), "این هدف تا کی فعال هست؟"
     ))
     # Must NOT contain the leaked update confirmation
@@ -350,7 +353,7 @@ def test_orchestrator_duplicate_future_commitment_steps_create_one_row(db):
         ],
         final_response_hint="تعهد کرایه خانه ثبت شد.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "دو هفته دیگه باید کرایه خونه بدم"
     ))
     assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
@@ -412,7 +415,7 @@ def test_washing_machine_creates_goal_not_commitment(db):
         steps=[_insert_goal_step("خرید ماشین لباسشویی", 47_000_000, "آخر خرداد")],
         final_response_hint="هدف خرید ماشین لباسشویی با مبلغ ۴۷ میلیون تومان ثبت شد.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "میخام تا آخر خرداد یک ماشین لباسشویی بخرم به مبلغ ۴۷ ملیون"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -430,7 +433,7 @@ def test_sport_ring_creates_goal_not_commitment(db):
         steps=[_insert_goal_step("رینگ اسپورت", 200_000_000, "ماه آینده")],
         final_response_hint="هدف خرید رینگ اسپورت با مبلغ ۲۰۰ میلیون تومان ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "رینگ اسپورت میخام بخرم ماه آینده ۲۰۰ میلیون"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -445,7 +448,7 @@ def test_check_creates_future_commitment_not_goal(db):
         steps=[_insert_commitment_step("چک ماه بعد", 50_000_000, "ماه بعد")],
         final_response_hint="تعهد چک ماه بعد ۵۰ میلیون ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "چک دارم ماه بعد ۵۰ میلیون"
     ))
     assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
@@ -460,7 +463,7 @@ def test_rent_creates_future_commitment_not_goal(db):
         steps=[_insert_commitment_step("کرایه خانه", 20_000_000, "ماه بعد")],
         final_response_hint="تعهد پرداخت کرایه خانه ماه بعد ۲۰ میلیون ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "باید کرایه خونه بدم ماه بعد ۲۰ میلیون"
     ))
     assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
@@ -488,7 +491,7 @@ def test_tour_split_creates_transaction_and_commitment(db):
             final_response_hint="۲۰ میلیون تومان پرداخت شد و ۴۰ میلیون تعهد ماه بعد ثبت شد.",
         )
     ]
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner(plans)).run(
         db, current_user(db), "تور ثبت‌نام کردم، الان ۲۰ میلیون دادم، ۴۰ میلیونش می‌افته ماه بعد"
     ))
     assert db.query(Transaction).filter(Transaction.user_id == 1, Transaction.amount == 20_000_000).count() == 1
@@ -540,7 +543,7 @@ def test_goal_deadline_update_persists_and_response_uses_updated_row(db):
         ),
         AgentPlan(intent="final", final_response_hint="موعد خرید لپتاپ به یک ماه دیرتر منتقل شد."),
     ]
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner(plans)).run(
         db, current_user(db), "خرید لپتاپ را به یک ماه دیرتر تغییر بده"
     ))
     db.refresh(goal)
@@ -572,7 +575,7 @@ def test_deadline_question_after_update_does_not_replay_update(db):
         ],
         final_response_hint="موعد این هدف تا ۱۶ خرداد ۱۴۰۵ فعال است.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([select_plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([select_plan])).run(
         db, current_user(db), "این هدف تا کی فعال هست؟",
         history=[
             {"role": "user", "content": "خرید لپتاپ را به یک ماه دیرتر تغییر بده"},
@@ -610,7 +613,7 @@ def test_leaked_op_confirmation_stripped_from_select_hint(db):
         ],
         final_response_hint="هدف شما تا خرداد ۱۴۰۵ فعال است.موعد خرید لپتاپ به یک ماه بعد منتقل شد",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "این هدف تا کی فعال هست؟"
     ))
     assert "منتقل شد" not in result.message
@@ -648,7 +651,7 @@ def test_history_context_select_is_allowed(db):
         ],
         final_response_hint="بر اساس تاریخچه، اهداف شما بررسی شد.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "تاریخچه اهداف من"
     ))
     # SELECT was allowed
@@ -677,7 +680,7 @@ def test_history_context_update_is_blocked(db):
             )
         ],
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "سلام"
     ))
     db.refresh(goal)
@@ -706,7 +709,7 @@ def test_drop_table_is_still_rejected(db):
             )
         ],
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, current_user(db), "DROP TABLE users"
     ))
     assert "امن" in result.message

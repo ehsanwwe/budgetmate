@@ -10,7 +10,10 @@ from app.db import Base
 from app.models import AgentSqlAuditLog, Category, FutureCommitment, Goal, Transaction, User
 from app.models.transaction import TransactionType
 from app.services.agent_orchestrator.date_utils import local_today, parse_relative_date
+from app.services.agent_orchestrator.goal_intake import NullGoalIntakeGate
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
+
+_NULL_GATE = NullGoalIntakeGate()
 from app.services.agent_orchestrator.sql_validator import SqlValidator
 from app.services.agent_orchestrator.types import AgentOperationType, AgentPlan, AgentPlanStep
 from app.services.personal_cfo.goal_context_service import find_goal_candidates, goal_match_score, normalize_goal_text
@@ -70,7 +73,7 @@ def test_goal_list_select_is_composed_from_real_rows_when_hint_is_generic():
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="نتوانستم این درخواست را به شکل امن انجام بدهم. لطفا درخواستت را ساده تر و دقیق تر بنویس.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, current_user(db), "لیست اهداف من و بده"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, current_user(db), "لیست اهداف من و بده"))
     assert "خرید لپ" in result.message
     assert "80,000,000" in result.message
     assert "60,000,000" in result.message
@@ -98,7 +101,7 @@ def test_goal_timing_question_falls_back_to_goal_rows_not_generic_failure():
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="نتوانستم این درخواست را به شکل امن انجام بدهم. لطفا درخواستت را ساده تر و دقیق تر بنویس.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, current_user(db), "لپتاپ باید کی بخرم؟"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, current_user(db), "لپتاپ باید کی بخرم؟"))
     assert "خرید لپ" in result.message
     assert "60,000,000" in result.message
     assert "نتوانستم" not in result.message
@@ -154,7 +157,7 @@ def test_goal_update_repairs_llm_user_id_scope_then_updates_deadline():
     )
     final_plan = AgentPlan(intent="final", final_response_hint="نتوانستم این درخواست را به شکل امن انجام بدهم. لطفا درخواستت را ساده تر و دقیق تر بنویس.")
     planner = SequencePlanner([invalid_plan, select_plan, update_plan, final_plan])
-    result = asyncio.run(AgentOrchestrator(planner=planner).run(db, current_user(db), "هدف لپتاپ من و بنداز یک سال دیر تر"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=planner).run(db, current_user(db), "هدف لپتاپ من و بنداز یک سال دیر تر"))
     db.refresh(goal)
     assert planner.calls >= 4
     assert goal.deadline == parse_relative_date("یک سال بعد")
@@ -216,7 +219,7 @@ def test_personal_cfo_advice_repairs_scoping_mistake_and_uses_clean_final():
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="برای کم کردن هزینه‌های غیرضروری، اول خرج‌های اختیاری را سقف‌گذاری کن، خریدهای فوری را 24 ساعت عقب بینداز و هر هفته سه دسته پرخرج را مرور کن.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([invalid_plan, select_plan, final_plan])).run(db, current_user(db), "چطوری هزینه های غیر ضروری رو کم کنم؟"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([invalid_plan, select_plan, final_plan])).run(db, current_user(db), "چطوری هزینه های غیر ضروری رو کم کنم؟"))
     assert "غیرضروری" in result.message
     assert "24" in result.message
     assert "نتوانستم" not in result.message

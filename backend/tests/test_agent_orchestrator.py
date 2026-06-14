@@ -19,7 +19,10 @@ from app.models.transaction import TransactionType
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.db_world import build_db_world
 from app.services.agent_orchestrator.date_utils import local_month_range, local_today, parse_relative_date
+from app.services.agent_orchestrator.goal_intake import NullGoalIntakeGate
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
+
+_NULL_GATE = NullGoalIntakeGate()
 from app.services.agent_orchestrator.planner import AgentPlanner
 from app.services.agent_orchestrator.sql_executor import SqlExecutor
 from app.services.agent_orchestrator.sql_validator import SqlValidator
@@ -339,7 +342,7 @@ def test_multi_intent_income_and_expense_selects_are_composed(db):
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="[expense_total] [income_total]")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([select_plan, final_plan])).run(db, user(db), "این ماه چقدر خرج کردم چقدر در آوردم"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([select_plan, final_plan])).run(db, user(db), "این ماه چقدر خرج کردم چقدر در آوردم"))
     assert "900,000" in result.message
     assert "5,000,000" in result.message
     assert "[" not in result.message
@@ -364,7 +367,7 @@ def test_top_category_select_uses_real_rows_not_placeholders(db):
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="[name] [total_amount]")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([select_plan, final_plan])).run(db, user(db), "بیشترین خرج ماه گذشته مربوط به چی بوده"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([select_plan, final_plan])).run(db, user(db), "بیشترین خرج ماه گذشته مربوط به چی بوده"))
     assert "Food" in result.message
     assert "200,000" in result.message
     assert "[" not in result.message
@@ -540,7 +543,7 @@ def test_tour_split_payment_creates_transaction_and_future_commitment(db):
         ),
         AgentPlan(intent="final", final_response_hint="ثبت شد. 30,000,000 تومان پرداخت فعلی تور ذخیره شد و 50,000,000 تومان تعهد ماه بعد ثبت شد."),
     ]
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(db, user(db), "tour split payment"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner(plans)).run(db, user(db), "tour split payment"))
     assert "50,000,000" in result.message
     txn = db.query(Transaction).filter(Transaction.user_id == 1, Transaction.amount == 30_000_000).first()
     commitment = db.query(FutureCommitment).filter(FutureCommitment.user_id == 1, FutureCommitment.amount == 50_000_000).first()
@@ -586,7 +589,7 @@ def test_emotional_spending_plan_queries_context_and_stores_insight(db):
         intent="final",
         final_response_hint="بهتر است برای خرج احساسی سقف کوچک و قابل کنترل بگذاری و خریدهای غیرضروری را 24 ساعت عقب بیندازی.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "emotional spending advice"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, user(db), "emotional spending advice"))
     assert "چقدر میخواهی" not in result.message
     assert "24" in result.message
     insight = db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "emotional_spending").first()
@@ -628,7 +631,7 @@ def test_laptop_goal_deadline_update_is_planner_driven(db):
         ),
         AgentPlan(intent="final", final_response_hint="مهلت هدف خرید لپتاپ به یک سال بعد تغییر کرد."),
     ]
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(db, user(db), "update laptop goal"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner(plans)).run(db, user(db), "update laptop goal"))
     db.refresh(goal)
     assert goal.deadline == parse_relative_date("یک سال بعد")
     assert "یک سال" in result.message
@@ -694,7 +697,7 @@ def test_future_plan_question_can_select_goals_commitments_facts_and_memories(db
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="یک هدف لپتاپ، تعهد تور، و برنامه خرید رینگ در داده‌های شما ثبت شده است.")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "future plans"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, user(db), "future plans"))
     assert "لپتاپ" in result.message
     assert "تور" in result.message
     assert db.query(AgentSqlAuditLog).filter(AgentSqlAuditLog.operation_type == "select").count() == 4
@@ -706,7 +709,7 @@ def test_planned_purchase_followup_creates_future_commitment_not_transaction(db)
         requires_db=False,
         clarification_question="برای این خرید آینده چه مبلغی در نظر داری؟",
     )
-    first = asyncio.run(AgentOrchestrator(planner=SequencePlanner([first_plan])).run(db, user(db), "planned purchase next month"))
+    first = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([first_plan])).run(db, user(db), "planned purchase next month"))
     assert "چه مبلغ" in first.message
 
     insert_plan = AgentPlan(
@@ -759,7 +762,7 @@ def test_mixed_pen_purchase_and_incomplete_transfer_records_only_pen(db):
         ],
     )
     final_plan = AgentPlan(intent="final", final_response_hint="هزینه خودکار ثبت شد. برای واریز به دوستت هنوز مبلغ و نوع آن مشخص نیست؛ هدیه، قرض یا بازپرداخت است؟")
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "mixed event"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, user(db), "mixed event"))
     assert "خودکار" in result.message
     assert "هدیه" in result.message
     assert db.query(Transaction).filter(Transaction.user_id == 1, Transaction.amount == 50_000).count() == 1
@@ -772,7 +775,7 @@ def test_personal_cfo_followup_can_answer_without_generic_failure(db):
         requires_db=False,
         final_response_hint="اوضاع نیاز به کنترل دارد، اما قابل مدیریت است. چون بودجه منفی شده، فعلا خرج‌های اختیاری را کم کن و تعهدات ماه بعد را نگه دار.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(db, user(db), "status follow-up"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(db, user(db), "status follow-up"))
     assert "قابل مدیریت" in result.message
     assert "نتوانستم" not in result.message
 
@@ -836,7 +839,7 @@ def test_unsafe_planner_output_rejected_and_audited(db):
             )
         ],
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(db, user(db), "DROP TABLE users;"))
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(db, user(db), "DROP TABLE users;"))
     assert "امن" in result.message
     audit = db.query(AgentSqlAuditLog).first()
     assert audit.validation_status == "rejected"

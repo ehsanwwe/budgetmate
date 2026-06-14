@@ -52,6 +52,18 @@ source_scope field MUST be set for every step:
 - source_scope="pending_intent" → step completes a pending clarification from a prior turn (only valid when current message is clearly a follow-up value)
 - source_scope="history_context" → step is informational SELECT for understanding context; NEVER use history_context for INSERT or UPDATE
 
+GOAL INTAKE GATE — CRITICAL RULE:
+The backend runs a GoalIntakeGate BEFORE calling the planner for goal-like desire messages.
+Messages such as "میخوام بخرم", "قصد دارم بخرم", "میخوام پس‌انداز کنم" are intercepted by
+the gate which asks for missing amount/date and then presents an add-vs-consult decision.
+The gate handles these and returns a response directly — the planner is NOT called.
+
+The planner IS called when:
+  1. The message is NOT goal-like (commitment, transaction, question, advice request)
+  2. The message is an EXPLICIT goal add: "یک هدف جدید اضافه کن برای X به مبلغ Y تا Z" — in this
+     case the gate passes through to the planner and INSERT INTO goals is appropriate.
+  3. No active goal_intake_pending intent exists for the user.
+
 SEMANTIC CLASSIFICATION — goal vs future_commitment vs transaction:
 Use EXACTLY one of these based on the user's wording:
 
@@ -68,17 +80,19 @@ FUTURE COMMITMENT (binding obligation exists):
   - Contract/order/payment obligation exists
   - INSERT INTO future_commitments, status="pending"
 
-GOAL (desired future purchase, no binding obligation):
-  Use when user WANTS to buy or save for something but has NOT yet committed:
-  - میخوام بخرم، قصد دارم، میخوام پس‌انداز کنم، هدف بزار برای
-  - تا آخر خرداد میخوام ماشین لباسشویی بخرم
-  - INSERT INTO goals, status="active"
+GOAL (desired future purchase, no binding obligation — EXPLICIT ADD ONLY):
+  Insert a goal only when the user EXPLICITLY requests adding a goal ("یک هدف اضافه کن",
+  "ثبت کن به عنوان هدف") AND provides amount and deadline in the same message.
+  For non-explicit "میخوام بخرم" wording: the gate handles it — do NOT insert here.
+  - Explicit: "یک هدف جدید اضافه کن برای خرید ساعت ۸۰ میلیون تا آخر سال" → INSERT goals
+  - Non-explicit: "میخوام ماشین بخرم ۵۰۰ میلیون تا آخر سال" → SELECT only (gate handled it)
 
 EXAMPLES (must classify correctly):
   "چک دارم ماه بعد ۵۰ میلیون" → future_commitments
   "باید کرایه خونه بدم ماه بعد ۲۰ میلیون" → future_commitments
-  "ماشین لباسشویی میخام بخرم تا آخر خرداد ۴۷ میلیون" → GOAL not commitment
-  "رینگ اسپورت میخام بخرم ماه آینده ۲۰۰ میلیون" → GOAL not commitment
+  "ماشین لباسشویی میخام بخرم تا آخر خرداد ۴۷ میلیون" → gate intercepted (SELECT only here)
+  "رینگ اسپورت میخام بخرم ماه آینده ۲۰۰ میلیون" → gate intercepted (SELECT only here)
+  "یک هدف اضافه کن: ساعت طلا ۸۰ میلیون آخر سال" → INSERT goals (explicit add)
   "تور ثبت‌نام کردم، الان ۲۰ میلیون دادم، ۴۰ میلیونش ماه بعده" → transaction (20M) + future_commitment (40M)
   "کادو خریدم ۲۵ میلیون" → transaction
 

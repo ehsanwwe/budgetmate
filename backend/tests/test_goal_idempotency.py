@@ -29,7 +29,10 @@ from app.models import Category, FutureCommitment, Goal, Transaction, User
 from app.models.transaction import TransactionType
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.date_utils import local_today
+from app.services.agent_orchestrator.goal_intake import NullGoalIntakeGate
 from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
+
+_NULL_GATE = NullGoalIntakeGate()
 from app.services.agent_orchestrator.sql_executor import SqlExecutor, _compute_fingerprint
 from app.services.agent_orchestrator.sql_validator import SqlValidator
 from app.services.agent_orchestrator.types import AgentFinalResponse, AgentOperationType, AgentPlan, AgentPlanStep, SourceScope
@@ -157,7 +160,7 @@ def test_duplicate_goal_steps_in_one_plan_creates_one_row(db):
         ],
         final_response_hint="هدف ثبت شد.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -173,7 +176,7 @@ def test_duplicate_goal_steps_with_prefix_variant_creates_one_row(db):
         ],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -196,7 +199,7 @@ def test_planner_loop_repeats_goal_insert_creates_one_row(db):
         steps=[_goal_step("انگشتر طلا", 100_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan1, plan2])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan1, plan2])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -215,7 +218,7 @@ def test_planner_loop_title_prefix_variant_creates_one_row(db):
         steps=[_goal_step("خرید انگشتر طلا", 100_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan1, plan2])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan1, plan2])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -234,7 +237,7 @@ def test_existing_active_goal_prevents_duplicate_insert(db):
         steps=[_goal_step("انگشتر طلا", 100_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -250,7 +253,7 @@ def test_existing_active_goal_with_prefix_variant_prevents_duplicate(db):
         steps=[_goal_step("خرید انگشتر طلا", 100_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -265,7 +268,7 @@ def test_existing_active_goal_response_mentions_already_exists(db):
         requires_db=True,
         steps=[_goal_step("انگشتر طلا", 100_000_000)],
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -286,7 +289,7 @@ def test_different_goals_not_falsely_deduped(db):
         steps=[_goal_step("سکه طلا", 80_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف سکه طلا بسازم"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 2
@@ -303,7 +306,7 @@ def test_same_title_different_amount_allowed(db):
         steps=[_goal_step("انگشتر طلا", 50_000_000)],
         final_response_hint="هدف ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم ۵۰ میلیون"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 2
@@ -359,7 +362,7 @@ def test_goal_vs_commitment_chat_message_creates_goal_only(db):
         steps=[_goal_step("انگشتر طلا", 100_000_000, deadline="آخر سال")],
         final_response_hint="هدف خرید انگشتر طلا با مبلغ ۱۰۰ میلیون ثبت شد.",
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام یک هدف برای خرید انگشتر طلا بسازم به مبلغ ۱۰۰ میلیون تا آخر سال"
     ))
     assert db.query(Goal).filter(Goal.user_id == 1).count() == 1
@@ -386,7 +389,7 @@ def test_expense_insert_still_works_after_idempotency_fix(db):
         )],
         final_response_hint="ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "50 هزار تومان تاکسی"
     ))
     assert db.query(Transaction).filter(Transaction.user_id == 1).count() == 1
@@ -406,7 +409,7 @@ def test_future_commitment_insert_still_works(db):
         )],
         final_response_hint="تعهد ثبت شد.",
     )
-    asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "چک دارم ماه بعد ۵۰ میلیون"
     ))
     assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
@@ -480,7 +483,7 @@ def test_drop_table_still_rejected_after_idempotency_fix(db):
             params={},
         )],
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "DROP TABLE users"
     ))
     assert "امن" in result.message
@@ -495,7 +498,7 @@ def test_no_sql_json_leak_in_duplicate_blocked_response(db):
         requires_db=True,
         steps=[_goal_step("انگشتر طلا", 100_000_000)],
     )
-    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+    result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan])).run(
         db, u1(db), "میخوام هدف انگشتر طلا بسازم"
     ))
     assert "SELECT" not in result.message

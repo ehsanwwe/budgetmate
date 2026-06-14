@@ -15,6 +15,10 @@ WORLD_INSTRUCTIONS = [
     "Use only named parameters such as :amount and put values in params.",
     "For categories, SELECT real rows first. Choose category_id only from returned rows; do not guess hidden ids.",
     "For transactions, INSERT only category_id, amount, type, description, date. The backend injects the authenticated user id.",
+    # Goal intake gate rule — CRITICAL
+    "GOAL INTAKE GATE: The backend GoalIntakeGate intercepts desire-wording goal messages (میخوام بخرم, قصد دارم, etc.) and runs a multi-turn state machine before inserting any goal. The planner is only called for non-goal-like messages or explicit goal additions. Do NOT insert a goal from non-explicit desire wording.",
+    "EXPLICIT GOAL ADD: INSERT INTO goals ONLY when the user explicitly requests adding a goal ('یک هدف اضافه کن', 'ثبت کن به عنوان هدف') WITH amount and deadline in the same message. For all other goal-like wording, return SELECT steps only and let the gate handle the state machine.",
+    "PENDING INTENT: The pending_agent_intents table is system-only. Never SELECT or INSERT from it in plans. The gate manages it internally.",
     # Goal rules
     "For goals, SELECT current goals before updating or archiving. UPDATE is allowed only for safe goal fields listed in the table columns/policy; use UPDATE status='archived' and is_active=false for delete/archive requests.",
     "For named goal questions, compare the user's wording with actual SELECTed goal rows. Do not invent goal ids. If exactly one goal is a confident match, use that id; if none or multiple are plausible, ask a specific clarification.",
@@ -23,7 +27,7 @@ WORLD_INSTRUCTIONS = [
     "For future commitments, use pending status for unpaid obligations and include due_date or due_month when known.",
     "Future commitments are for BINDING obligations the user is already committed to: checks, installments, rent dues, tour balances, loan repayments. Do not create a future_commitment when the user is merely planning or wanting to buy something.",
     # Semantic classification enforcement
-    "GOAL (not commitment): Use goals when user says میخوام بخرم, قصد دارم, میخوام پس‌انداز کنم, هدف بزار, or similar desire/plan wording WITHOUT a binding payment obligation.",
+    "GOAL vs COMMITMENT boundary: 'میخوام بخرم' → gate handles it (return SELECT only). 'چک دارم' → INSERT future_commitments. 'خریدم' → INSERT transactions.",
     "FUTURE COMMITMENT (not goal): Use future_commitments when user has a binding obligation: چک دارم, قسط دارم, باید اجاره/کرایه بدهم, تور ثبت‌نام کردم و باقی‌مانده‌اش ماه بعد است.",
     # Spending decisions
     "For spending decisions, query budget, current spending, goals, future commitments, and relevant memories before recommending a cap or approving a large purchase.",
