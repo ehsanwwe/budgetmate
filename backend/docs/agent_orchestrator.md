@@ -7,20 +7,40 @@ Flow:
 
 1. `chat.py` saves the user message and calls `AgentOrchestrator`.
 2. The orchestrator builds a compact finance context and a safe DB World.
-3. The OpenAI planner asks for strict `AgentPlan` JSON and is responsible for all financial intent detection.
-4. The orchestrator executes validated steps and sends execution results back to OpenAI for multi-step planning.
+3. The selected LLM planner asks for strict `AgentPlan` JSON and is responsible for all financial intent detection.
+4. The orchestrator executes validated steps and sends execution results back to the selected provider for multi-step planning.
 5. Each proposed SQL step is validated by `SqlValidator`.
 6. `SqlExecutor` executes only validated operations, scopes SELECTs to the authenticated user, injects `user_id` for inserts, and writes audit rows.
 7. `ResponseComposer` returns clean Persian text. SQL, JSON plans, step ids, unresolved placeholders, and audit details are not exposed.
 
 Provider:
 
-- Active chat/orchestrator planning uses OpenAI only.
-- OpenAI authentication uses only `OPENAI_API_KEY`.
-- `OPENAI_MODEL` selects the model and defaults to `gpt-4o-mini`.
-- If `OPENAI_API_KEY` is missing, the planner fails closed with a safe Persian response.
-- There is no fallback provider in the active chat/orchestrator path.
+- Active chat/orchestrator planning uses `AI_PROVIDER=openai` or `AI_PROVIDER=ollama`.
+- OpenAI authentication uses only `OPENAI_API_KEY`; `OPENAI_KEY` is not supported.
+- `OPENAI_MODEL` selects the OpenAI model and defaults to `gpt-4o-mini` when unset.
+- Ollama uses `OLLAMA_BASE_URL`, defaulting to `http://localhost:11434`.
+- Ollama uses `OLLAMA_MODEL`, defaulting to `gpt-oss:20b`.
+- If `AI_PROVIDER` is missing and `OPENAI_API_KEY` exists, OpenAI is used.
+- If `AI_PROVIDER` is missing and `OPENAI_API_KEY` is missing, Ollama is used with `gpt-oss:20b`.
+- If `AI_PROVIDER=openai`, missing `OPENAI_API_KEY` is a configuration error and the planner fails closed with a safe Persian response.
+- There is no OpenClaw fallback in the active chat/orchestrator path.
 - Startup logging reports only provider and model names, never secrets.
+
+OpenAI mode:
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Ollama mode:
+
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gpt-oss:20b
+```
 
 DB World:
 
@@ -72,7 +92,7 @@ Future phases should extend the planner prompts, context builder, and response c
 
 Goal-aware decision phase:
 
-- The OpenAI planner remains responsible for deciding whether a message is a goal operation, future commitment, purchase decision, emotional-spending request, or transaction event.
+- The selected LLM planner remains responsible for deciding whether a message is a goal operation, future commitment, purchase decision, emotional-spending request, or transaction event.
 - The backend does not use keyword shortcuts for goal/gift/tour/laptop/home-party examples.
 - Goal updates must SELECT current goals first and choose a real goal id from returned rows. Low-confidence or multiple matches should produce a specific clarification.
 - Goal deletion/archiving uses `UPDATE goals SET status='archived', is_active=false WHERE id=:id`.
@@ -91,11 +111,11 @@ Phase 5.5 context completion:
 Phase 5.6 goal chat recovery:
 
 - Normal goal and Personal CFO advice questions should not fall into the generic safe-failure response.
-- If OpenAI mistakenly includes `user_id` in a SELECT/WHERE/params for a user-scoped table, the operation is rejected and audited, but the orchestrator treats it as repairable and asks the planner for a corrected backend-scoped query. Destructive/admin SQL still fails immediately.
+- If the planner mistakenly includes `user_id` in a SELECT/WHERE/params for a user-scoped table, the operation is rejected and audited, but the orchestrator treats it as repairable and asks the planner for a corrected backend-scoped query. Destructive/admin SQL still fails immediately.
 - User scope is inserted before `GROUP BY`, `HAVING`, `ORDER BY`, or `LIMIT`, so grouped spending/category queries stay valid after backend scoping.
 - Goal SELECT results have a safe formatter fallback that lists active goals with target amount, current amount, remaining amount, progress, and deadline when OpenAI returns a placeholder or generic failure hint after successful reads.
 - Goal UPDATE results have a safe formatter fallback that confirms the updated goal from the actual row.
-- Goal fuzzy matching is available only as a helper over real selected/stored goal titles. It normalizes Persian/Arabic characters, half-spaces, whitespace, and common laptop variants such as `لپتاپ`, `لپ تاب`, `لپ‌تاپ`, `لپتاب`, `لپباپ`, and `laptop`. It does not decide intent or bypass the OpenAI planner.
+- Goal fuzzy matching is available only as a helper over real selected/stored goal titles. It normalizes Persian/Arabic characters, half-spaces, whitespace, and common laptop variants such as `لپتاپ`, `لپ تاب`, `لپ‌تاپ`, `لپتاب`, `لپباپ`, and `laptop`. It does not decide intent or bypass the selected LLM planner.
 
 Manual Phase 3 checks:
 

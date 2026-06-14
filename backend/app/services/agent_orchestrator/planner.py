@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.services.agent_orchestrator.types import AgentPlan
-from app.services.ai import OpenAIProviderError, get_ai_chat_completion
+from app.services.ai import LLMProviderError, get_ai_chat_completion
 
 
 PLANNER_SYSTEM_PROMPT = """You are BudgetMate's backend financial planner.
@@ -182,7 +182,7 @@ class AgentPlanner:
 
         try:
             raw = await get_ai_chat_completion(messages, require_json=True)
-        except OpenAIProviderError:
+        except LLMProviderError:
             return self._provider_failure_plan()
         plan = self._parse_plan(raw)
         if plan:
@@ -194,7 +194,7 @@ class AgentPlanner:
         ]
         try:
             repaired = await get_ai_chat_completion(repair_messages, require_json=True)
-        except OpenAIProviderError:
+        except LLMProviderError:
             return self._provider_failure_plan()
         plan = self._parse_plan(repaired)
         if plan:
@@ -215,7 +215,7 @@ class AgentPlanner:
             language="fa",
             requires_db=False,
             steps=[],
-            final_response_hint="فعلا اتصال OpenAI برای پردازش درخواست در دسترس نیست. لطفا تنظیم OPENAI_API_KEY را بررسی کنید.",
+            final_response_hint="فعلا اتصال ارائه‌دهنده هوش مصنوعی برای پردازش درخواست در دسترس نیست. لطفا تنظیمات AI_PROVIDER را بررسی کنید.",
             confidence=0,
         )
 
