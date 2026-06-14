@@ -144,7 +144,7 @@ def normalize_date(value: Any | None) -> date:
         return today - timedelta(days=3)
     if "هفته پیش" in text or "هفته گذشته" in text:
         return today - timedelta(days=7)
-    if text in {"ماه بعد", "ماه بعدی", "ماه آینده"}:
+    if text in {"یک ماه بعد", "ماه بعد", "ماه بعدی", "ماه آینده"}:
         year = today.year + (1 if today.month == 12 else 0)
         month = 1 if today.month == 12 else today.month + 1
         return date(year, month, 1)
@@ -153,4 +153,7 @@ def normalize_date(value: Any | None) -> date:
         return date(today.year + 1, today.month, min(today.day, last_day))
     if text in {"اواسط پاییز", "نیمه پاییز"}:
         return date(today.year, 11, 6)
-    return date.fromisoformat(text)
+    try:
+        return date.fromisoformat(text)
+    except (ValueError, TypeError):
+        return today

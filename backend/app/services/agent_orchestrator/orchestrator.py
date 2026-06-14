@@ -19,9 +19,12 @@ from app.services.agent_orchestrator.types import (
     AgentOperationType,
     AgentPlan,
     AgentPlanStep,
+    SourceScope,
 )
 
 logger = logging.getLogger(__name__)
+
+_WRITE_OPS = {AgentOperationType.insert, AgentOperationType.update}
 
 
 class AgentOrchestrator:
@@ -56,6 +59,9 @@ class AgentOrchestrator:
         last_action_plan: AgentPlan | None = None
         last_plan: AgentPlan = plan
 
+        # Per-turn fingerprint dedup: prevent the same write executing twice in one run
+        seen_fingerprints: set[str] = set()
+
         for _ in range(5):
             last_plan = plan
             if settings.AGENT_DEBUG_TRACE:
@@ -82,17 +88,44 @@ class AgentOrchestrator:
             last_action_plan = plan
             had_repairable_failure = False
             for step in actionable:
-                result = self._validate_and_execute(db, user, plan, step)
+                # CURRENT-TURN EXECUTION GUARD: reject writes inferred from history
+                if step.operation_type in _WRITE_OPS and step.source_scope == SourceScope.history_context:
+                    logger.warning(
+                        "agent blocked history_context write step_id=%s table=%s intent=%s",
+                        step.step_id,
+                        step.table_name,
+                        plan.intent,
+                    )
+                    audit_operation(db, user.id, plan.intent, step, "rejected", "write from history_context is not allowed", False)
+                    result = AgentExecutionResult(
+                        step_id=step.step_id,
+                        operation_type=step.operation_type,
+                        allowed=False,
+                        executed=False,
+                        rejected_reason="write from history_context is not allowed",
+                    )
+                    all_results.append(result)
+                    execution_payloads.append(result.model_dump(mode="json"))
+                    had_repairable_failure = True
+                    break
+
+                result = self._validate_and_execute(db, user, plan, step, seen_fingerprints)
                 if settings.AGENT_DEBUG_TRACE:
                     logger.info(
-                        "agent step validation step_id=%s operation=%s allowed=%s executed=%s",
+                        "agent step validation step_id=%s operation=%s allowed=%s executed=%s skipped_duplicate=%s",
                         step.step_id,
                         step.operation_type.value,
                         result.allowed,
                         result.executed,
+                        result.skipped_duplicate,
                     )
                 all_results.append(result)
                 execution_payloads.append(result.model_dump(mode="json"))
+
+                # Track fingerprint to prevent intra-turn duplication
+                if result.operation_fingerprint:
+                    seen_fingerprints.add(result.operation_fingerprint)
+
                 if not result.allowed or result.error:
                     if self._is_clearly_malicious(result):
                         return self.composer.compose(db, plan, all_results)
@@ -117,6 +150,7 @@ class AgentOrchestrator:
         user: User,
         plan: AgentPlan,
         step: AgentPlanStep,
+        seen_fingerprints: set[str],
     ) -> AgentExecutionResult:
         try:
             validation = self.validator.validate(step.operation_type, step.table_name, step.sql, step.params)
@@ -129,7 +163,7 @@ class AgentOrchestrator:
                 executed=False,
                 rejected_reason=str(exc),
             )
-        return self.executor.execute(db, user, step, validation, plan.intent)
+        return self.executor.execute(db, user, step, validation, plan.intent, seen_fingerprints)
 
     def _is_clearly_malicious(self, result: AgentExecutionResult) -> bool:
         reason = (result.rejected_reason or result.error or "").lower()

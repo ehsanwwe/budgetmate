@@ -38,11 +38,14 @@ def parse_relative_date(value: object | None) -> date:
     if raw in {"یک سال بعد", "یک سال دیگر", "سال بعد", "سال آینده"}:
         last_day = calendar.monthrange(today.year + 1, today.month)[1]
         return date(today.year + 1, today.month, min(today.day, last_day))
-    if raw in {"ماه بعد", "ماه بعدی", "ماه آینده"}:
+    if raw in {"یک ماه بعد", "ماه بعد", "ماه بعدی", "ماه آینده"}:
         year = today.year + (1 if today.month == 12 else 0)
         month = 1 if today.month == 12 else today.month + 1
         return date(year, month, 1)
-    return date.fromisoformat(raw)
+    try:
+        return date.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return today
 
 
 def local_week_range(anchor: date | None = None, previous: bool = False) -> tuple[date, date]:

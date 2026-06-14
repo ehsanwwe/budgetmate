@@ -8,6 +8,7 @@ from app.models.future_commitment import FutureCommitment
 from app.models.chat import ChatMessage
 from app.models.activity import ActivityLog
 from app.models.agent_audit import AgentSqlAuditLog
+from app.models.agent_idempotency import AgentOperationEvent, PendingAgentIntent
 from app.models.personal_cfo import (
     BehaviorInsight,
     FinancialDecisionLog,
@@ -30,6 +31,8 @@ __all__ = [
     "ChatMessage",
     "ActivityLog",
     "AgentSqlAuditLog",
+    "AgentOperationEvent",
+    "PendingAgentIntent",
     "FinancialPersona",
     "FinancialMemory",
     "BehaviorInsight",

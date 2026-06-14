@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.agent_audit import AgentSqlAuditLog
+from app.models.agent_idempotency import AgentOperationEvent
 from app.models.category import Category
 from app.models.future_commitment import FutureCommitment
 from app.models.goal import Goal
@@ -22,6 +24,12 @@ from app.services.agent_orchestrator.value_normalizer import normalize_amount, n
 from app.services.personal_cfo.behavior_service import ALLOWED_INSIGHTS
 from app.services.personal_cfo.behavior_service import upsert_behavior_insight
 from app.services.personal_cfo.memory_service import ALLOWED_MEMORY_TYPES
+
+# Dedup window: skip duplicate writes within this window (prevents history replay)
+_DEDUP_WINDOW_MINUTES = 60
+
+# Params excluded from fingerprint (ephemeral/metadata, never affect semantic identity)
+_FINGERPRINT_EXCLUDED = {"description", "notes_json", "metadata_json", "source", "content_json", "evidence_json", "confidence"}
 
 
 def audit_operation(
@@ -50,6 +58,35 @@ def audit_operation(
     db.commit()
 
 
+def _compute_fingerprint(
+    user_id: int,
+    operation_type: str,
+    table_name: str,
+    params: dict[str, Any],
+) -> str:
+    """Stable hash of the semantic identity of a write operation."""
+    key_params: dict[str, Any] = {}
+    for k, v in sorted(params.items()):
+        if k in _FINGERPRINT_EXCLUDED:
+            continue
+        # Normalize amounts so "47 ملیون" and 47000000 get the same hash
+        if k in {"amount", "target_amount", "current_amount"}:
+            try:
+                v = normalize_amount(v)
+            except Exception:
+                pass
+        if isinstance(v, str):
+            v = v.lower().strip()
+        key_params[k] = v
+
+    payload = json.dumps(
+        {"u": user_id, "op": operation_type, "t": table_name, "p": key_params},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:40]
+
+
 class SqlExecutor:
     def execute(
         self,
@@ -58,6 +95,7 @@ class SqlExecutor:
         step: AgentPlanStep,
         validation: SqlValidationResult,
         intent: str,
+        seen_fingerprints: set[str] | None = None,
     ) -> AgentExecutionResult:
         if not validation.allowed:
             audit_operation(db, user.id, intent, step, "rejected", validation.rejected_reason, False)
@@ -68,6 +106,53 @@ class SqlExecutor:
                 executed=False,
                 rejected_reason=validation.rejected_reason,
             )
+
+        # Compute idempotency fingerprint for write operations
+        fingerprint: str | None = None
+        if validation.operation_type in {AgentOperationType.insert, AgentOperationType.update}:
+            fingerprint = _compute_fingerprint(
+                user.id,
+                validation.operation_type.value,
+                validation.table_name or "",
+                validation.params,
+            )
+
+            # Per-turn dedup: same fingerprint already executed this run
+            if seen_fingerprints is not None and fingerprint in seen_fingerprints:
+                audit_operation(db, user.id, intent, step, "skipped_duplicate", "duplicate within same turn", False)
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=step.operation_type,
+                    allowed=True,
+                    executed=False,
+                    skipped_duplicate=True,
+                    operation_fingerprint=fingerprint,
+                    summary="skipped duplicate write (same turn)",
+                )
+
+            # Cross-turn dedup: same fingerprint within the dedup window
+            window_start = datetime.utcnow() - timedelta(minutes=_DEDUP_WINDOW_MINUTES)
+            existing = (
+                db.query(AgentOperationEvent)
+                .filter(
+                    AgentOperationEvent.user_id == user.id,
+                    AgentOperationEvent.operation_fingerprint == fingerprint,
+                    AgentOperationEvent.status == "executed",
+                    AgentOperationEvent.created_at >= window_start,
+                )
+                .first()
+            )
+            if existing:
+                audit_operation(db, user.id, intent, step, "skipped_duplicate", f"duplicate of event_id={existing.id}", False)
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=step.operation_type,
+                    allowed=True,
+                    executed=False,
+                    skipped_duplicate=True,
+                    operation_fingerprint=fingerprint,
+                    summary=f"skipped duplicate (already executed within {_DEDUP_WINDOW_MINUTES}m)",
+                )
 
         try:
             if validation.operation_type == AgentOperationType.select:
@@ -87,24 +172,28 @@ class SqlExecutor:
                 updated_id = self._execute_update(db, user, validation)
                 summary = {"updated_id": updated_id}
                 audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
+                self._record_operation_event(db, user.id, fingerprint, "update", validation.table_name or "", updated_id, validation.params)
                 return AgentExecutionResult(
                     step_id=step.step_id,
                     operation_type=AgentOperationType.update,
                     allowed=True,
                     executed=True,
                     updated_id=updated_id,
+                    operation_fingerprint=fingerprint,
                     summary=f"updated row {updated_id}",
                 )
 
             inserted_id = self._execute_insert(db, user, validation)
             summary = {"inserted_id": inserted_id}
             audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
+            self._record_operation_event(db, user.id, fingerprint, "insert", validation.table_name or "", inserted_id, validation.params)
             return AgentExecutionResult(
                 step_id=step.step_id,
                 operation_type=AgentOperationType.insert,
                 allowed=True,
                 executed=True,
                 inserted_id=inserted_id,
+                operation_fingerprint=fingerprint,
                 summary=f"inserted row {inserted_id}",
             )
         except Exception as exc:
@@ -117,6 +206,33 @@ class SqlExecutor:
                 executed=False,
                 error=str(exc),
             )
+
+    def _record_operation_event(
+        self,
+        db: Session,
+        user_id: int,
+        fingerprint: str | None,
+        operation_type: str,
+        table_name: str,
+        target_id: int | None,
+        params: dict[str, Any],
+    ) -> None:
+        if not fingerprint:
+            return
+        try:
+            event = AgentOperationEvent(
+                user_id=user_id,
+                operation_fingerprint=fingerprint,
+                operation_type=operation_type,
+                table_name=table_name,
+                target_record_id=target_id,
+                status="executed",
+                payload_json=params,
+            )
+            db.add(event)
+            db.commit()
+        except Exception:
+            db.rollback()
 
     def _execute_select(self, db: Session, user: User, validation: SqlValidationResult) -> list[dict[str, Any]]:
         sql = validation.sql or ""

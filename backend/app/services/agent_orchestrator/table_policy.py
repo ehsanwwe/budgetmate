@@ -251,6 +251,16 @@ POLICIES: dict[str, TablePolicy] = {
         business_name="admin authentication records",
         system_only=True,
     ),
+    "agent_operation_events": TablePolicy(
+        table_name="agent_operation_events",
+        business_name="system idempotency log for agent operations",
+        system_only=True,
+    ),
+    "pending_agent_intents": TablePolicy(
+        table_name="pending_agent_intents",
+        business_name="system pending agent intent store",
+        system_only=True,
+    ),
 }
 
 
@@ -259,6 +269,8 @@ FORBIDDEN_TABLES = {
     "activity_logs",
     "agent_sql_audit_logs",
     "persona_update_logs",
+    "agent_operation_events",
+    "pending_agent_intents",
     "token_wallets",
     "token_usage_logs",
     "token_purchases",
