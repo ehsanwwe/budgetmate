@@ -76,8 +76,16 @@ def _compute_fingerprint(
                 v = normalize_amount(v)
             except Exception:
                 pass
-        # Normalize goal titles so "خرید انگشتر طلا" and "انگشتر طلا" hash identically
-        elif k == "title" and table_name == "goals" and isinstance(v, str):
+        elif k in {"date", "deadline", "due_date"}:
+            try:
+                parsed = normalize_date(v) if v else None
+                v = parsed.isoformat() if parsed else None
+            except Exception:
+                pass
+        elif k == "due_month" and isinstance(v, str):
+            v = re.sub(r"\s+", " ", v.strip().lower())
+        # Normalize goal/commitment titles so superficial wording changes hash identically.
+        elif k == "title" and table_name in {"goals", "future_commitments"} and isinstance(v, str):
             v = normalize_goal_text(v)
         elif isinstance(v, str):
             v = v.lower().strip()
@@ -158,7 +166,7 @@ class SqlExecutor:
                     summary=f"skipped duplicate (already executed within {_DEDUP_WINDOW_MINUTES}m)",
                 )
 
-        # Semantic goal dedup: check active goals with similar title before any INSERT
+        # Semantic goal dedup: check active goals with similar title before any INSERT.
         if validation.operation_type == AgentOperationType.insert and validation.table_name == "goals":
             try:
                 existing_goal_id = self._check_semantic_goal_duplicate(db, user, validation.params)
@@ -176,6 +184,34 @@ class SqlExecutor:
                     operation_fingerprint=fingerprint,
                     existing_record_id=existing_goal_id,
                     summary=f"skipped duplicate goal (active goal id={existing_goal_id} already exists)",
+                )
+
+        # Semantic future-commitment dedup: the LLM/stream path can produce the same
+        # obligation twice with slightly different non-semantic params. Block that here.
+        if validation.operation_type == AgentOperationType.insert and validation.table_name == "future_commitments":
+            try:
+                existing_commitment_id = self._check_semantic_future_commitment_duplicate(db, user, validation.params)
+            except Exception:
+                existing_commitment_id = None
+            if existing_commitment_id is not None:
+                audit_operation(
+                    db,
+                    user.id,
+                    intent,
+                    step,
+                    "skipped_duplicate",
+                    f"pending future commitment already exists id={existing_commitment_id}",
+                    False,
+                )
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=step.operation_type,
+                    allowed=True,
+                    executed=False,
+                    skipped_duplicate=True,
+                    operation_fingerprint=fingerprint,
+                    existing_record_id=existing_commitment_id,
+                    summary=f"skipped duplicate future commitment (id={existing_commitment_id} already exists)",
                 )
 
         try:
@@ -286,6 +322,66 @@ class SqlExecutor:
                     return candidate.id
             elif no_amount and score >= 0.80:
                 return candidate.id
+        return None
+
+    def _check_semantic_future_commitment_duplicate(self, db: Session, user: User, params: dict[str, Any]) -> int | None:
+        """Return an existing pending commitment id for the same obligation.
+
+        This catches duplicate writes when the planner returns repeated INSERTs,
+        a repair loop replays the same obligation with slightly different
+        metadata, or the frontend/stream path submits the same turn twice.
+        """
+        title = str(params.get("title") or "").strip()
+        if not title:
+            return None
+
+        try:
+            amount = normalize_amount(params.get("amount"))
+        except Exception:
+            return None
+        if amount <= 0:
+            return None
+
+        incoming_due_date = None
+        if params.get("due_date"):
+            try:
+                incoming_due_date = normalize_date(params.get("due_date"))
+            except Exception:
+                incoming_due_date = None
+        incoming_due_month = str(params.get("due_month") or "").strip().lower() or None
+        incoming_norm = normalize_goal_text(title)
+        window_start = datetime.utcnow() - timedelta(minutes=_DEDUP_WINDOW_MINUTES)
+
+        candidates = (
+            db.query(FutureCommitment)
+            .filter(
+                FutureCommitment.user_id == user.id,
+                FutureCommitment.status == str(params.get("status") or "pending")[:30],
+                FutureCommitment.amount == amount,
+                FutureCommitment.created_at >= window_start,
+            )
+            .all()
+        )
+
+        for candidate in candidates:
+            existing_norm = normalize_goal_text(candidate.title or "")
+            title_matches = bool(incoming_norm and existing_norm == incoming_norm) or goal_match_score(title, candidate.title or "") >= 0.75
+            if not title_matches:
+                continue
+
+            due_matches = False
+            if incoming_due_date and candidate.due_date:
+                due_matches = incoming_due_date == candidate.due_date
+            elif incoming_due_month and candidate.due_month:
+                due_matches = incoming_due_month == str(candidate.due_month).strip().lower()
+            else:
+                # If one representation is missing/different but the duplicate was created
+                # in the recent replay window with same title+amount, treat it as duplicate.
+                due_matches = True
+
+            if due_matches:
+                return int(candidate.id)
+
         return None
 
     def _execute_select(self, db: Session, user: User, validation: SqlValidationResult) -> list[dict[str, Any]]:

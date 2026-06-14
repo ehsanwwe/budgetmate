@@ -272,6 +272,92 @@ def test_cross_turn_duplicate_is_skipped(db):
     assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
 
 
+def test_semantic_future_commitment_duplicate_with_different_metadata_is_skipped(db):
+    """Same obligation with different description/source-like metadata must not insert twice."""
+    executor = SqlExecutor()
+    validator = SqlValidator()
+    seen: set[str] = set()
+
+    first = AgentPlanStep(
+        step_id="rent1",
+        operation_type=AgentOperationType.insert,
+        purpose="insert rent commitment",
+        table_name="future_commitments",
+        sql="INSERT INTO future_commitments (title, amount, due_date, description, status, source) VALUES (:title, :amount, :due_date, :description, :status, :source)",
+        params={
+            "title": "کرایه خانه",
+            "amount": 25_000_000,
+            "due_date": "دو هفته بعد",
+            "description": "پرداخت کرایه خانه",
+            "status": "pending",
+            "source": "chat",
+        },
+        source_scope=SourceScope.current_message,
+    )
+    second = AgentPlanStep(
+        step_id="rent2",
+        operation_type=AgentOperationType.insert,
+        purpose="insert duplicated rent commitment",
+        table_name="future_commitments",
+        sql="INSERT INTO future_commitments (title, amount, due_date, description, status, source) VALUES (:title, :amount, :due_date, :description, :status, :source)",
+        params={
+            "title": "پرداخت کرایه خانه",
+            "amount": "۲۵ ملیون",
+            "due_date": "دو هفته بعد",
+            "description": "یادآوری کرایه",
+            "status": "pending",
+            "source": "chat",
+        },
+        source_scope=SourceScope.current_message,
+    )
+
+    r1 = executor.execute(db, current_user(db), first, validator.validate(first.operation_type, first.table_name, first.sql, first.params), "rent", seen)
+    assert r1.executed
+    if r1.operation_fingerprint:
+        seen.add(r1.operation_fingerprint)
+
+    r2 = executor.execute(db, current_user(db), second, validator.validate(second.operation_type, second.table_name, second.sql, second.params), "rent", seen)
+    assert not r2.executed
+    assert r2.skipped_duplicate
+    assert r2.existing_record_id == r1.inserted_id
+    assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
+
+
+def test_orchestrator_duplicate_future_commitment_steps_create_one_row(db):
+    """A planner response containing duplicate rent commitments must create only one row."""
+    plan = AgentPlan(
+        intent="rent_future_commitment",
+        requires_db=True,
+        steps=[
+            AgentPlanStep(
+                step_id="c1",
+                operation_type=AgentOperationType.insert,
+                purpose="insert rent commitment",
+                table_name="future_commitments",
+                sql="INSERT INTO future_commitments (title, amount, due_date, status, source) VALUES (:title, :amount, :due_date, :status, :source)",
+                params={"title": "کرایه خانه", "amount": 25_000_000, "due_date": "دو هفته بعد", "status": "pending", "source": "chat"},
+                source_scope=SourceScope.current_message,
+            ),
+            AgentPlanStep(
+                step_id="c2",
+                operation_type=AgentOperationType.insert,
+                purpose="duplicate rent commitment from same plan",
+                table_name="future_commitments",
+                sql="INSERT INTO future_commitments (title, amount, due_date, description, status, source) VALUES (:title, :amount, :due_date, :description, :status, :source)",
+                params={"title": "پرداخت کرایه خانه", "amount": 25_000_000, "due_date": "دو هفته بعد", "description": "تعهد کرایه", "status": "pending", "source": "chat"},
+                source_scope=SourceScope.current_message,
+            ),
+        ],
+        final_response_hint="تعهد کرایه خانه ثبت شد.",
+    )
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan])).run(
+        db, current_user(db), "دو هفته دیگه باید کرایه خونه بدم"
+    ))
+    assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 1
+    skipped = db.query(AgentSqlAuditLog).filter(AgentSqlAuditLog.validation_status == "skipped_duplicate").first()
+    assert skipped is not None
+
+
 def test_legitimate_different_date_transactions_are_not_deduplicated(db):
     """Daily bus fares on different dates must each be allowed (different fingerprints)."""
     step_today = AgentPlanStep(
