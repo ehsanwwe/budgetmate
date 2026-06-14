@@ -7,8 +7,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://188.136.214.220:18789")
-OPENCLAW_TOKEN = os.getenv("OPENCLAW_TOKEN", "")
 
 
 async def transcribe_audio(audio_bytes: bytes, content_type: str) -> dict:
@@ -40,25 +38,6 @@ async def transcribe_audio(audio_bytes: bytes, content_type: str) -> dict:
                 logger.warning("OpenAI Whisper failed: %s %s", response.status_code, response.text)
         except Exception as e:
             logger.warning("OpenAI Whisper exception: %s", e)
-
-    # Strategy 2: OpenClaw audio endpoint
-    openclaw_audio_url = f"{OPENCLAW_URL}/v1/audio/transcriptions"
-    try:
-        headers = {}
-        if OPENCLAW_TOKEN:
-            headers["Authorization"] = f"Bearer {OPENCLAW_TOKEN}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                openclaw_audio_url,
-                headers=headers,
-                files={"file": (f"audio.{ext}", audio_bytes, content_type)},
-                data={"model": "whisper-1", "language": "fa"},
-            )
-            if response.status_code == 200:
-                return {"transcript": response.json().get("text", "")}
-            logger.warning("OpenClaw STT failed: %s", response.status_code)
-    except Exception as e:
-        logger.warning("OpenClaw STT exception: %s", e)
 
     # Fallback: save to disk and return error
     try:

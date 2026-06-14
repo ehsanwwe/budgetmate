@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionType
-from app.services.agent_orchestrator.types import AgentExecutionResult, AgentFinalResponse, AgentPlan
+from app.services.agent_orchestrator.types import AgentExecutionResult, AgentFinalResponse, AgentPlan, AgentPlanStep
 
 _PLACEHOLDER_RE = re.compile(r"\[[a-zA-Z_][a-zA-Z0-9_\-\s.]*\]")
 _SQL_RE = re.compile(r"\b(select|insert|update|delete|drop|alter|pragma)\b", re.IGNORECASE)
@@ -39,63 +40,15 @@ class ResponseComposer:
     ) -> AgentFinalResponse:
         if plan.clarification_question:
             return AgentFinalResponse(
-                message=sanitize_user_message(plan.clarification_question)
-                or "لطفا درخواستت را کمی دقیق تر بنویس.",
+                message=sanitize_user_message(plan.clarification_question) or "لطفا درخواستت را کمی دقیق تر بنویس.",
                 metadata={"intent": plan.intent},
             )
 
         inserted = [r for r in results if r.inserted_id]
         if inserted:
-            tx = db.query(Transaction).filter(Transaction.id == inserted[-1].inserted_id).first()
-            if tx:
-                category = db.query(Category).filter(Category.id == tx.category_id).first() if tx.category_id else None
-                kind = "درآمد" if tx.type == TransactionType.income else "هزینه"
-                cat_text = f" در دسته {category.name}" if category else ""
-                suggestion = (
-                    "بهتر است آخر هفته یک نگاه کوتاه به روند خرج های این ماه داشته باشیم."
-                    if tx.type == TransactionType.expense
-                    else "اگر این درآمد تکرارشونده است، می توانیم بعدا آن را در برنامه ماهانه ات لحاظ کنیم."
-                )
-                question = (
-                    "می خواهی برای همین دسته یک بودجه ماهانه مشخص کنیم؟"
-                    if tx.type == TransactionType.expense
-                    else "می خواهی درآمدهای پروژه ای را جداگانه پیگیری کنیم؟"
-                )
-                message = (
-                    f"ثبت شد. {kind} {_fmt(tx.amount)} برای {tx.description or kind}{cat_text} ذخیره شد. "
-                    f"{suggestion} {question}"
-                )
-                return AgentFinalResponse(
-                    message=message,
-                    operations_summary=[f"inserted transaction {tx.id}"],
-                    metadata={"intent": plan.intent, "transaction_id": tx.id},
-                )
-
-        selected = [r for r in results if r.rows]
-        select_results = [r for r in results if r.operation_type.value == "select" and r.executed]
-        aggregate = self._compose_aggregate(db, plan, (select_results[-1] if select_results else None))
-        if aggregate:
-            return AgentFinalResponse(
-                message=aggregate,
-                operations_summary=[r.summary or "" for r in results if r.summary],
-                metadata={"intent": plan.intent},
-            )
-
-        safe_hint = sanitize_user_message(plan.final_response_hint)
-        if selected and safe_hint:
-            return AgentFinalResponse(
-                message=safe_hint,
-                operations_summary=[r.summary or "" for r in results if r.summary],
-                metadata={"intent": plan.intent},
-            )
-
-        if fallback_message:
-            return AgentFinalResponse(
-                message=sanitize_user_message(fallback_message) or self._fallback_for_intent(plan.intent),
-                metadata={"intent": plan.intent},
-            )
-        if safe_hint:
-            return AgentFinalResponse(message=safe_hint, metadata={"intent": plan.intent})
+            response = self._compose_insert(db, plan, inserted[-1])
+            if response:
+                return response
 
         rejected = [r for r in results if r.rejected_reason or r.error]
         if rejected:
@@ -105,50 +58,116 @@ class ResponseComposer:
                 metadata={"intent": plan.intent, "rejected": True},
             )
 
+        select_message = self._compose_select_results(db, plan, results)
+        safe_hint = sanitize_user_message(plan.final_response_hint)
+        if select_message and not safe_hint:
+            return AgentFinalResponse(
+                message=select_message,
+                operations_summary=[r.summary or "" for r in results if r.summary],
+                metadata={"intent": plan.intent},
+            )
+        if safe_hint:
+            return AgentFinalResponse(
+                message=safe_hint,
+                operations_summary=[r.summary or "" for r in results if r.summary],
+                metadata={"intent": plan.intent},
+            )
+        if select_message:
+            return AgentFinalResponse(
+                message=select_message,
+                operations_summary=[r.summary or "" for r in results if r.summary],
+                metadata={"intent": plan.intent},
+            )
+        if fallback_message:
+            return AgentFinalResponse(
+                message=sanitize_user_message(fallback_message) or "فعلا نتوانستم پاسخ نهایی مطمئنی بسازم.",
+                metadata={"intent": plan.intent},
+            )
+
         return AgentFinalResponse(
             message="متوجه شدم. برای ثبت یا تحلیل مالی، لطفا مبلغ و موضوع را کمی دقیق تر بگو.",
             metadata={"intent": plan.intent},
         )
 
-    def _compose_aggregate(self, db: Session, plan: AgentPlan, result: AgentExecutionResult | None) -> str | None:
-        if not result or not plan.intent.startswith("aggregate:"):
+    def _compose_insert(self, db: Session, plan: AgentPlan, result: AgentExecutionResult) -> AgentFinalResponse | None:
+        tx = db.query(Transaction).filter(Transaction.id == result.inserted_id).first()
+        if not tx:
             return None
-        parts = plan.intent.split(":")
-        if len(parts) != 4:
-            return None
-        _, aggregate_type, range_key, tx_type = parts
-        range_text = {
-            "current_week": "این هفته",
-            "previous_week": "هفته گذشته",
-            "current_month": "این ماه",
-            "previous_month": "ماه گذشته",
-            "today": "امروز",
-            "yesterday": "دیروز",
-        }.get(range_key, "این بازه")
-        kind_text = "درآمد" if tx_type == "income" else "هزینه"
+        category = db.query(Category).filter(Category.id == tx.category_id).first() if tx.category_id else None
+        kind = "درآمد" if tx.type == TransactionType.income else "هزینه"
+        cat_text = f" در دسته {category.name}" if category else ""
+        suggestion = (
+            "اگر این درآمد تکرارشونده است، می توانیم بعدا آن را در برنامه ماهانه ات لحاظ کنیم."
+            if tx.type == TransactionType.income
+            else "بهتر است آخر هفته یک نگاه کوتاه به روند خرج های این ماه داشته باشیم."
+        )
+        message = f"ثبت شد. {kind} {_fmt(tx.amount)} برای {tx.description or kind}{cat_text} ذخیره شد. {suggestion}"
+        return AgentFinalResponse(
+            message=message,
+            operations_summary=[f"inserted transaction {tx.id}"],
+            metadata={"intent": plan.intent, "transaction_id": tx.id},
+        )
 
-        if aggregate_type == "total":
-            total = int((result.rows[0].get("total") if result.rows else 0) or 0)
-            if total <= 0:
-                return f"برای {range_text} {kind_text} ثبت نشده است."
-            verb = "داشته اید" if tx_type == "income" else "خرج کرده اید"
-            return f"{kind_text} شما در {range_text} مجموعا {_fmt(total)} {verb}."
+    def _compose_select_results(self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult]) -> str | None:
+        step_by_id = {step.step_id: step for step in plan.steps}
+        totals: dict[str, int] = {}
+        top_category: tuple[str, int] | None = None
 
-        if aggregate_type == "top_category":
+        for result in results:
+            if not result.executed or result.operation_type.value != "select":
+                continue
+            step = step_by_id.get(result.step_id)
+            if not step:
+                continue
             row = result.rows[0] if result.rows else {}
-            total = int(row.get("total") or 0)
-            if total <= 0:
-                return f"برای {range_text} هزینه ای ثبت نشده است."
-            category = None
-            if row.get("category_id") is not None:
-                category = db.query(Category).filter(Category.id == int(row["category_id"])).first()
-            name = category.name if category else "سایر"
-            return f"بیشترین خرج {range_text} مربوط به دسته {name} با مجموع {_fmt(total)} بوده است."
+            total = self._extract_total(row)
+            if "category_id" in row and total is not None:
+                category = db.query(Category).filter(Category.id == int(row["category_id"])).first() if row.get("category_id") is not None else None
+                top_category = (category.name if category else "سایر", total)
+                continue
+            tx_type = self._step_transaction_type(step)
+            if tx_type and total is not None:
+                totals[tx_type] = total
+                continue
+
+        if "expense" in totals and "income" in totals:
+            expense = totals.get("expense", 0)
+            income = totals.get("income", 0)
+            balance = income - expense
+            if expense and income:
+                balance_text = f"تراز ثبت شده شما {_fmt(abs(balance))} {'مثبت' if balance >= 0 else 'منفی'} است."
+                return f"در این بازه {_fmt(expense)} هزینه و {_fmt(income)} درآمد ثبت کرده اید. {balance_text}"
+            if expense and not income:
+                return f"در این بازه {_fmt(expense)} هزینه ثبت شده اما درآمدی ثبت نشده است."
+            if income and not expense:
+                return f"در این بازه درآمد شما {_fmt(income)} بوده و هزینه ای ثبت نشده است."
+            return "برای این بازه درآمد یا هزینه ای ثبت نشده است."
+
+        if "expense" in totals:
+            expense = totals.get("expense", 0)
+            return f"در این بازه مجموعا {_fmt(expense)} هزینه ثبت شده است." if expense else "برای این بازه هزینه ای ثبت نشده است."
+        if "income" in totals:
+            income = totals.get("income", 0)
+            return f"درآمد شما در این بازه مجموعا {_fmt(income)} بوده است." if income else "برای این بازه درآمدی ثبت نشده است."
+        if top_category:
+            name, amount = top_category
+            return f"بیشترین خرج این بازه مربوط به دسته {name} با مجموع {_fmt(amount)} بوده است." if amount else "برای این بازه هزینه ای ثبت نشده است."
         return None
 
-    def _fallback_for_intent(self, intent: str) -> str:
-        if "top_category" in intent:
-            return "هنوز داده کافی برای این تحلیل ندارم."
-        if "aggregate" in intent:
-            return "برای این بازه تراکنشی ثبت نشده است."
-        return "متوجه شدم. لطفا درخواستت را کمی دقیق تر بنویس."
+    def _extract_total(self, row: dict[str, Any]) -> int | None:
+        for key in ("total", "total_amount", "sum", "amount"):
+            if key in row:
+                return int(row.get(key) or 0)
+        return None
+
+    def _step_transaction_type(self, step: AgentPlanStep) -> str | None:
+        raw = step.params.get("type")
+        if raw in {"expense", "income"}:
+            return str(raw)
+        purpose = (step.purpose or "").lower()
+        sql = (step.sql or "").lower()
+        if "income" in purpose or "type = 'income'" in sql or 'type = "income"' in sql:
+            return "income"
+        if "expense" in purpose or "type = 'expense'" in sql or 'type = "expense"' in sql:
+            return "expense"
+        return None

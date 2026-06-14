@@ -6,9 +6,14 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.personal_cfo import BehaviorInsight
-from app.services.agent_orchestrator.message_parser import normalize_text
 from app.services.personal_cfo.memory_service import create_memory
 from app.services.personal_cfo.persona_service import update_persona_from_signal
+
+_DIGIT_MAP = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def normalize_text(message: str) -> str:
+    return " ".join(message.translate(_DIGIT_MAP).replace("\u200c", " ").split())
 
 ALLOWED_INSIGHTS = {
     "emotional_spending",

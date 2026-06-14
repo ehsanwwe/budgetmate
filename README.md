@@ -39,7 +39,7 @@
 - 🔒 **100% Privacy** — no bank integration, your data stays on your machine
 - 🇮🇷 **Persian-first** — full RTL UI, Jalali calendar, Persian numerals throughout
 - 🤖 **AI-powered** — chat with a financial advisor that knows your budget and spending
-- 🔌 **Pluggable AI** — switch between OpenClaw, Ollama (local), or Anthropic with a single env var
+- 🔌 **OpenAI-powered AI** — chat planning uses OpenAI, with backend validation and audit
 - 👨‍💼 **Built-in admin panel** — manage users, view stats, block accounts
 - 📱 **Mobile-first responsive design** — works beautifully on any screen size
 
@@ -108,11 +108,8 @@
 ┌─────────┐    ┌─────────────────────────────────┐
 │ SQLite  │    │   AI Provider (pluggable)       │
 │   DB    │    │  ┌──────────┐  ┌──────────┐    │
-└─────────┘    │  │ OpenClaw │  │  Ollama  │    │
-               │  └──────────┘  └──────────┘    │
-               │  ┌──────────────────────────┐  │
-               │  │       Anthropic          │  │
-               │  └──────────────────────────┘  │
+└─────────┘    │        OpenAI Planner        │
+               │  backend validates actions  │
                └─────────────────────────────────┘
 ```
 
@@ -176,13 +173,8 @@ pip install --user -r requirements.txt
 Create `backend/.env`:
 
 ```env
-OPENCLAW_URL=http://your-openclaw-host:port
-OPENCLAW_TOKEN=your_token_here
-AI_PROVIDER=
 OPENAI_API_KEY=
-OPENAI_MODEL=
-PRIMARY_MODEL=ollama/gemma4:26b
-FALLBACK_MODELS=ollama/qwen3-coder:30b,ollama/qwen3-coder:latest,ollama/gemma3:12b,ollama/qwen3:14b,openai/gpt-4o-mini
+OPENAI_MODEL=gpt-4o-mini
 APP_TIMEZONE=Asia/Tehran
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_admin_password
@@ -245,45 +237,11 @@ For the admin panel:
 
 ## 🔌 Switching AI Providers
 
-BudgetMate selects the AI provider in this order:
-
-1. `AI_PROVIDER=openai` uses OpenAI and requires `OPENAI_API_KEY`.
-2. If `AI_PROVIDER` is empty and `OPENAI_API_KEY` exists, OpenAI is selected automatically.
-3. `AI_PROVIDER=openclaw` uses OpenClaw only when explicitly requested.
-4. If OpenAI is not configured, the existing OpenClaw/Ollama waterfall remains available.
-
-OpenAI authentication uses only `OPENAI_API_KEY`. `OPENAI_MODEL` is optional; if omitted, the first configured `openai/*` model in the model waterfall is used.
-
-### Option 1: OpenAI
+BudgetMate's active chat/orchestrator path uses OpenAI only. The LLM plans; the backend validates, scopes, executes, audits, and formats.
 
 ```env
-AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=
-```
-
-### Option 2: OpenClaw
-
-```env
-AI_PROVIDER=openclaw
-OPENCLAW_URL=http://your-host:port
-OPENCLAW_TOKEN=your_token
-```
-
-### Option 3: Local Ollama
-
-Make sure Ollama is running:
-
-```bash
-ollama serve
-ollama pull gemma4:26b
-```
-
-Then:
-
-```env
-AI_PROVIDER=ollama
-PRIMARY_MODEL=gemma4:26b
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ---
@@ -423,7 +381,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 - 🔒 **حریم خصوصی کامل** — هیچ اتصال بانکی نیست، داده‌ها روی سیستم شما باقی می‌مانند
 - 🇮🇷 **فارسی از پایه** — رابط راست‌چین کامل، تقویم جلالی، اعداد فارسی
 - 🤖 **هوش مصنوعی مالی** — مشاوره مبتنی بر بودجه و خرج‌های واقعی شما
-- 🔌 **هوش مصنوعی قابل سوئیچ** — بین OpenClaw، Ollama (محلی) یا Anthropic
+- 🔌 **هوش مصنوعی با OpenAI** — برنامه‌ریزی با مدل انجام می‌شود و اجرا در بک‌اند اعتبارسنجی می‌شود
 - 👨‍💼 **پنل ادمین داخلی** — مدیریت کاربران، آمار، بلاک کردن
 - 📱 **طراحی موبایل‌اول** — روی هر اندازه صفحه‌ای زیبا است
 
@@ -517,11 +475,11 @@ npm run dev
 
 ## 🔌 سوئیچ بین Providerهای هوش مصنوعی
 
-سه provider پشتیبانی می‌شود. متغیر `AI_PROVIDER` را در `backend/.env` تغییر دهید و سرور را restart کنید:
+مسیر فعال چت و orchestrator فقط از OpenAI استفاده می‌کند:
 
-- `openclaw` (پیش‌فرض) — سرور OpenClaw اختصاصی
-- `ollama` — Ollama محلی روی `localhost:11434`
-- `anthropic` — Claude از Anthropic (نیاز به API key)
+- `OPENAI_API_KEY` برای احراز هویت OpenAI
+- `OPENAI_MODEL` برای انتخاب مدل
+- مدل فقط برنامه پیشنهاد می‌دهد؛ بک‌اند SQL را اعتبارسنجی، محدود، اجرا و audit می‌کند.
 
 ---
 

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.services.agent_orchestrator.types import AgentPlan
-from app.services.ai import get_ai_chat_completion
+from app.services.ai import OpenAIProviderError, get_ai_chat_completion
 
 
 PLANNER_SYSTEM_PROMPT = """You are BudgetMate's backend financial planner.
@@ -34,7 +34,11 @@ Return only strict JSON matching this schema:
   "confidence": 0.0
 }
 Use SQL only as a proposal. The backend validates and executes it.
-Do not include markdown, comments, prose, SQL fences, or hidden reasoning."""
+Do not include markdown, comments, prose, SQL fences, or hidden reasoning.
+The LLM is responsible for financial intent detection. Do not wait for backend shortcuts.
+For questions asking both income and expense, create separate SELECT steps for both totals.
+For transaction creation, SELECT real categories first when category choice is needed.
+Never invent totals, category names, or ids. Use final_response only after validated execution results are available."""
 
 
 class AgentPlanner:
@@ -63,7 +67,10 @@ class AgentPlanner:
             )
         messages.append({"role": "user", "content": user_message})
 
-        raw = await get_ai_chat_completion(messages, require_json=True)
+        try:
+            raw = await get_ai_chat_completion(messages, require_json=True)
+        except OpenAIProviderError:
+            return self._provider_failure_plan()
         plan = self._parse_plan(raw)
         if plan:
             return plan
@@ -72,7 +79,10 @@ class AgentPlanner:
             {"role": "assistant", "content": raw},
             {"role": "user", "content": "Repair your previous answer. Return valid AgentPlan JSON only."},
         ]
-        repaired = await get_ai_chat_completion(repair_messages, require_json=True)
+        try:
+            repaired = await get_ai_chat_completion(repair_messages, require_json=True)
+        except OpenAIProviderError:
+            return self._provider_failure_plan()
         plan = self._parse_plan(repaired)
         if plan:
             return plan
@@ -83,6 +93,16 @@ class AgentPlanner:
             requires_db=False,
             steps=[],
             final_response_hint="فعلا نتوانستم درخواستت را با اطمینان پردازش کنم. لطفا کمی دقیق تر بنویس.",
+            confidence=0,
+        )
+
+    def _provider_failure_plan(self) -> AgentPlan:
+        return AgentPlan(
+            intent="provider_unavailable",
+            language="fa",
+            requires_db=False,
+            steps=[],
+            final_response_hint="فعلا اتصال OpenAI برای پردازش درخواست در دسترس نیست. لطفا تنظیم OPENAI_API_KEY را بررسی کنید.",
             confidence=0,
         )
 

@@ -36,10 +36,9 @@
 - `admin.py` — GET /admin/stats, GET/POST /admin/users (list, get, block, unblock), GET /admin/activity
 
 **AI Service** (`backend/app/services/ai.py`)
-- OpenClaw provider with 3 URL path fallbacks
-- Ollama direct fallback
+- OpenAI-only active provider for chat/orchestrator planning
 - Dynamic Persian system prompt with user's budget/spending context
-- Model waterfall: PRIMARY_MODEL → FALLBACK_MODELS
+- Model selected by `OPENAI_MODEL`
 - Persian fallback message if all providers fail
 
 ### Frontend (100% complete, builds clean, dev server returns 200)
@@ -81,7 +80,7 @@
 - Alembic migration `003_extend_user_onboarding` applied
 - New router `onboarding.py`: status, profile, agreement, complete endpoints
 - Iran geo data: `backend/app/data/iran_geo.py` — 31 provinces, 5-10 cities each
-- STT service `backend/app/services/stt.py` — OpenAI Whisper → OpenClaw → fallback
+- STT service `backend/app/services/stt.py` — OpenAI Whisper → safe error fallback
 - `POST /chat/voice` — multipart audio transcription + AI reply
 - `verify-otp` now returns `onboarding_completed` flag
 

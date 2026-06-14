@@ -11,7 +11,7 @@ budgetmate/
 │   │   ├── main.py   # App entry, router mounts
 │   │   ├── models/   # SQLAlchemy models
 │   │   ├── routers/  # API route handlers
-│   │   ├── services/ # AI service (OpenClaw/Ollama)
+│   │   ├── services/ # AI service (OpenAI planner/orchestrator)
 │   │   └── core/     # Auth, config, seed, jalali
 │   └── .env          # Secrets (JWT, AI provider)
 └── frontend/         # Next.js 16 + Tailwind v4 + shadcn/ui
@@ -54,7 +54,7 @@ npm run dev
 - shadcn/ui init failed due to network (ECONNRESET), components written manually in src/components/ui/
 - Zod v4 breaking changes: no `invalid_type_error`/`required_error`, use `z.number()` with `valueAsNumber: true` in react-hook-form register
 - passlib incompatible with Python 3.13 — bcrypt used directly in backend
-- AI service uses OpenClaw at http://188.136.214.220:18789 with Ollama fallback
+- AI service uses OpenAI only in the active chat/orchestrator path.
 - jalaliday plugin used for Jalali/Shamsi calendar dates
 
 ## Authentication + Onboarding Flow (implemented)
