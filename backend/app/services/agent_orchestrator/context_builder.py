@@ -26,6 +26,7 @@ def build_agent_context(user: User, db: Session) -> dict:
         "remaining_budget": context["remaining_budget"],
         "top_expense_categories": context["top_expense_categories"],
         "active_goals": context["active_goals"][:5],
+        "future_commitments": context.get("future_commitments", [])[:5],
         "recent_transactions": context["recent_transactions"][:5],
     }
     payload["personal_cfo"] = build_cfo_context(db, user.id)

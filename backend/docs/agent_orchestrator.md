@@ -28,13 +28,15 @@ DB World:
 - Filtered through `table_policy.py`.
 - Exposes only allowed tables and safe columns.
 - Tells the model to SELECT real categories before choosing a `category_id`.
-- Includes safe Personal CFO tables when they exist: persona, memories, behavior insights, facts, warnings, and decision logs.
+- Includes goals, future commitments, and safe Personal CFO tables when they exist: persona, memories, behavior insights, facts, warnings, and decision logs.
 
 Table policy:
 
 - `categories`: SELECT only.
 - `transactions`: SELECT and INSERT; always backend-scoped to current user.
-- `budgets` and `goals`: SELECT only.
+- `budgets`: SELECT only.
+- `goals`: SELECT, INSERT, and safe UPDATE for title, target/current amount, deadline, status/archive fields, and notes. Goal DELETE requests are represented as archive updates, not raw DELETE.
+- `future_commitments`: SELECT, INSERT, and safe UPDATE for pending obligations, due dates/months, amount, status, and relationship fields.
 - `users`: minimal current-user profile SELECT only.
 - `financial_memories`, `behavior_insights`, `financial_facts`, `financial_warnings`, `financial_decision_logs`: safe user-scoped SELECT/INSERT where policy allows it.
 - `financial_personas`: user-scoped SELECT only.
@@ -44,9 +46,9 @@ SQL validator:
 
 - Fails closed.
 - Rejects multiple statements, comments, destructive/admin SQL, forbidden tables, forbidden columns, unsafe inserts, and LLM-provided `user_id`.
-- Allows conservative parameterized SELECT and INSERT proposals on policy-approved tables.
+- Allows conservative parameterized SELECT, INSERT, and explicitly policy-approved UPDATE proposals.
 - Allows grouped aggregate SELECTs and joins only when every referenced table and column is allowed.
-- UPDATE remains disabled in this phase unless a table policy explicitly enables it later.
+- UPDATE is only enabled for tables and columns explicitly listed in `table_policy.py`. Raw DELETE remains blocked.
 
 Backend deterministic responsibilities:
 
@@ -56,6 +58,8 @@ Backend deterministic responsibilities:
 - Persian amount/date normalization is a value-cleanup helper after the LLM has extracted values; it is not an intent planner.
 - The response composer can combine multiple executed SELECT results, such as income and expense totals from the same user question.
 - Values and category names come only from executed, user-scoped SELECT results.
+- Decision advice must be planner-driven and grounded in executed reads of budget, current spending/income, goals, future commitments, and relevant CFO context.
+- Emotional-spending requests should not encourage spending; the planner should query context, propose behavior insight storage when appropriate, and ask for clarification only when required data is missing.
 - `APP_TIMEZONE` controls relative Persian dates and defaults to `Asia/Tehran`.
 - Final response sanitization blocks unresolved placeholder tokens such as `[total_amount]`.
 
@@ -65,6 +69,15 @@ Audit log:
 - The LLM cannot read or write this table directly.
 
 Future phases should extend the planner prompts, context builder, and response composer for Personal CFO behavior without weakening `table_policy.py` or `sql_validator.py`.
+
+Goal-aware decision phase:
+
+- The OpenAI planner remains responsible for deciding whether a message is a goal operation, future commitment, purchase decision, emotional-spending request, or transaction event.
+- The backend does not use keyword shortcuts for goal/gift/tour/laptop/home-party examples.
+- Goal updates must SELECT current goals first and choose a real goal id from returned rows. Low-confidence or multiple matches should produce a specific clarification.
+- Goal deletion/archiving uses `UPDATE goals SET status='archived', is_active=false WHERE id=:id`.
+- Future obligations such as an unpaid later installment are stored in `future_commitments` with `status='pending'` and included in future budget analysis.
+- High-value purchase responses should mention budget/goal/commitment tradeoffs and must not blindly approve the purchase.
 
 Manual Phase 3 checks:
 

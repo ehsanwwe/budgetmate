@@ -17,6 +17,7 @@ def normalize_text(message: str) -> str:
 
 ALLOWED_INSIGHTS = {
     "emotional_spending",
+    "sadness_spending",
     "stress_spending",
     "impulse_purchase",
     "end_of_month_overspending",

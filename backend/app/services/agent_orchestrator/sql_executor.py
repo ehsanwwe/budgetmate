@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.models.agent_audit import AgentSqlAuditLog
 from app.models.category import Category
-from app.models.personal_cfo import BehaviorInsight, FinancialDecisionLog, FinancialFact, FinancialMemory, FinancialWarning
+from app.models.future_commitment import FutureCommitment
+from app.models.goal import Goal
+from app.models.personal_cfo import FinancialDecisionLog, FinancialFact, FinancialMemory, FinancialWarning
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
 from app.services.agent_orchestrator.date_utils import parse_relative_date
@@ -18,6 +20,7 @@ from app.services.agent_orchestrator.table_policy import get_policy
 from app.services.agent_orchestrator.types import AgentExecutionResult, AgentOperationType, AgentPlanStep, SqlValidationResult
 from app.services.agent_orchestrator.value_normalizer import normalize_amount, normalize_date
 from app.services.personal_cfo.behavior_service import ALLOWED_INSIGHTS
+from app.services.personal_cfo.behavior_service import upsert_behavior_insight
 from app.services.personal_cfo.memory_service import ALLOWED_MEMORY_TYPES
 
 
@@ -80,6 +83,18 @@ class SqlExecutor:
                     summary=f"{len(rows)} rows selected",
                 )
 
+            if validation.operation_type == AgentOperationType.update:
+                updated_id = self._execute_update(db, user, validation)
+                summary = {"updated_id": updated_id}
+                audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=AgentOperationType.update,
+                    allowed=True,
+                    executed=True,
+                    summary=f"updated row {updated_id}",
+                )
+
             inserted_id = self._execute_insert(db, user, validation)
             summary = {"inserted_id": inserted_id}
             audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
@@ -125,6 +140,10 @@ class SqlExecutor:
         params = dict(validation.params)
         if table == "transactions":
             return self._insert_transaction(db, user, params)
+        if table == "goals":
+            return self._insert_goal(db, user, params)
+        if table == "future_commitments":
+            return self._insert_future_commitment(db, user, params)
         if table == "financial_memories":
             return self._insert_memory(db, user, params)
         if table == "behavior_insights":
@@ -136,6 +155,17 @@ class SqlExecutor:
         if table == "financial_decision_logs":
             return self._insert_decision_log(db, user, params)
         raise ValueError("INSERT into this table is not enabled")
+
+    def _execute_update(self, db: Session, user: User, validation: SqlValidationResult) -> int:
+        table = validation.table_name
+        params = dict(validation.params)
+        assignments = self._parse_update_assignments(validation.sql or "")
+        row_id = self._parse_update_row_id(validation.sql or "", params)
+        if table == "goals":
+            return self._update_goal(db, user, row_id, assignments, params)
+        if table == "future_commitments":
+            return self._update_future_commitment(db, user, row_id, assignments, params)
+        raise ValueError("UPDATE on this table is not enabled")
 
     def _insert_transaction(self, db: Session, user: User, params: dict[str, Any]) -> int:
         category_id = params.get("category_id")
@@ -165,6 +195,109 @@ class SqlExecutor:
         db.refresh(txn)
         return int(txn.id)
 
+    def _insert_goal(self, db: Session, user: User, params: dict[str, Any]) -> int:
+        title = str(params.get("title") or "").strip()
+        if not title:
+            raise ValueError("goal title is required")
+        if params.get("target_amount") is None:
+            raise ValueError("goal target_amount is required")
+        target_amount = normalize_amount(params.get("target_amount"))
+        if target_amount <= 0:
+            raise ValueError("goal target_amount must be positive")
+        current_amount = normalize_amount(params.get("current_amount") or 0)
+        status = str(params.get("status") or "active")
+        goal = Goal(
+            user_id=user.id,
+            title=title[:200],
+            target_amount=target_amount,
+            current_amount=max(0, min(current_amount, target_amount)),
+            deadline=normalize_date(params.get("deadline")) if params.get("deadline") else None,
+            status=status,
+            is_active=bool(params.get("is_active", status != "archived")),
+            notes_json=self._json_param(params.get("notes_json")) if params.get("notes_json") is not None else None,
+        )
+        db.add(goal)
+        db.commit()
+        db.refresh(goal)
+        return int(goal.id)
+
+    def _insert_future_commitment(self, db: Session, user: User, params: dict[str, Any]) -> int:
+        title = str(params.get("title") or "").strip()
+        if not title:
+            raise ValueError("future commitment title is required")
+        amount = normalize_amount(params.get("amount"))
+        if amount <= 0:
+            raise ValueError("future commitment amount must be positive")
+        category_id = self._visible_category_id(db, user, params.get("category_id"))
+        row = FutureCommitment(
+            user_id=user.id,
+            title=title[:200],
+            amount=amount,
+            due_date=normalize_date(params.get("due_date")) if params.get("due_date") else None,
+            due_month=str(params.get("due_month"))[:40] if params.get("due_month") else None,
+            category_id=category_id,
+            related_transaction_id=self._visible_transaction_id(db, user, params.get("related_transaction_id")),
+            related_goal_id=self._visible_goal_id(db, user, params.get("related_goal_id")),
+            description=str(params.get("description") or "")[:1000] or None,
+            status=str(params.get("status") or "pending")[:30],
+            source=str(params.get("source") or "chat")[:50],
+            metadata_json=self._json_param(params.get("metadata_json")) if params.get("metadata_json") is not None else None,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
+    def _update_goal(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        goal = db.query(Goal).filter(Goal.id == row_id, Goal.user_id == user.id).first()
+        if not goal:
+            raise ValueError("goal is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column in {"target_amount", "current_amount"}:
+                setattr(goal, column, normalize_amount(value))
+            elif column == "deadline":
+                goal.deadline = normalize_date(value) if value else None
+            elif column == "title":
+                goal.title = str(value)[:200]
+            elif column == "status":
+                goal.status = str(value)[:30]
+                if goal.status == "archived":
+                    goal.is_active = False
+            elif column == "is_active":
+                goal.is_active = bool(value)
+                if not goal.is_active:
+                    goal.status = "archived"
+            elif column == "notes_json":
+                goal.notes_json = self._json_param(value)
+        db.commit()
+        db.refresh(goal)
+        return int(goal.id)
+
+    def _update_future_commitment(self, db: Session, user: User, row_id: int, assignments: dict[str, str], params: dict[str, Any]) -> int:
+        row = db.query(FutureCommitment).filter(FutureCommitment.id == row_id, FutureCommitment.user_id == user.id).first()
+        if not row:
+            raise ValueError("future commitment is not available to the current user")
+        for column, param_name in assignments.items():
+            value = params[param_name]
+            if column == "amount":
+                row.amount = normalize_amount(value)
+            elif column == "due_date":
+                row.due_date = normalize_date(value) if value else None
+            elif column == "category_id":
+                row.category_id = self._visible_category_id(db, user, value)
+            elif column == "related_goal_id":
+                row.related_goal_id = self._visible_goal_id(db, user, value)
+            elif column == "related_transaction_id":
+                row.related_transaction_id = self._visible_transaction_id(db, user, value)
+            elif column == "metadata_json":
+                row.metadata_json = self._json_param(value)
+            else:
+                setattr(row, column, str(value)[:1000] if value is not None else None)
+        db.commit()
+        db.refresh(row)
+        return int(row.id)
+
     def _insert_memory(self, db: Session, user: User, params: dict[str, Any]) -> int:
         memory_type = str(params.get("memory_type") or "")
         if memory_type not in ALLOWED_MEMORY_TYPES:
@@ -187,15 +320,13 @@ class SqlExecutor:
         insight_type = str(params.get("insight_type") or "")
         if insight_type not in ALLOWED_INSIGHTS:
             raise ValueError("unsupported insight type")
-        row = BehaviorInsight(
-            user_id=user.id,
-            insight_type=insight_type,
-            evidence_json=self._json_param(params.get("evidence_json")),
-            confidence=self._confidence(params.get("confidence")),
+        row = upsert_behavior_insight(
+            db,
+            user.id,
+            insight_type,
+            self._json_param(params.get("evidence_json")),
+            self._confidence(params.get("confidence")),
         )
-        db.add(row)
-        db.commit()
-        db.refresh(row)
         return int(row.id)
 
     def _insert_fact(self, db: Session, user: User, params: dict[str, Any]) -> int:
@@ -240,6 +371,46 @@ class SqlExecutor:
         db.commit()
         db.refresh(row)
         return int(row.id)
+
+    def _parse_update_assignments(self, sql: str) -> dict[str, str]:
+        match = re.search(r"\bset\b(.+?)\bwhere\b", sql, re.IGNORECASE | re.DOTALL)
+        if not match:
+            raise ValueError("invalid UPDATE assignments")
+        assignments: dict[str, str] = {}
+        for item in match.group(1).split(","):
+            col, param = item.split("=", 1)
+            assignments[col.strip().lower()] = param.strip()[1:]
+        return assignments
+
+    def _parse_update_row_id(self, sql: str, params: dict[str, Any]) -> int:
+        match = re.search(r"\bwhere\s+id\s*=\s*:([a-zA-Z_][\w]*)\s*$", sql, re.IGNORECASE)
+        if not match:
+            raise ValueError("invalid UPDATE target")
+        return int(params[match.group(1)])
+
+    def _visible_category_id(self, db: Session, user: User, category_id: Any) -> int | None:
+        if category_id is None:
+            return None
+        category = db.query(Category).filter(Category.id == int(category_id)).first()
+        if not category or (not category.is_default and category.user_id != user.id):
+            raise ValueError("category_id is not available to the current user")
+        return int(category.id)
+
+    def _visible_goal_id(self, db: Session, user: User, goal_id: Any) -> int | None:
+        if goal_id is None:
+            return None
+        goal = db.query(Goal).filter(Goal.id == int(goal_id), Goal.user_id == user.id).first()
+        if not goal:
+            raise ValueError("goal_id is not available to the current user")
+        return int(goal.id)
+
+    def _visible_transaction_id(self, db: Session, user: User, transaction_id: Any) -> int | None:
+        if transaction_id is None:
+            return None
+        txn = db.query(Transaction).filter(Transaction.id == int(transaction_id), Transaction.user_id == user.id).first()
+        if not txn:
+            raise ValueError("related_transaction_id is not available to the current user")
+        return int(txn.id)
 
     def _add_user_scope(self, sql: str, table_name: str, user_id_column: str) -> str:
         qualified = f"{table_name}.{user_id_column}" if table_name and table_name in sql else user_id_column

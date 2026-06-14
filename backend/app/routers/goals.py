@@ -12,7 +12,7 @@ router = APIRouter(prefix="/goals", tags=["goals"])
 
 @router.get("", response_model=List[GoalOut])
 def list_goals(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Goal).filter(Goal.user_id == current_user.id).all()
+    return db.query(Goal).filter(Goal.user_id == current_user.id, Goal.is_active == True).all()
 
 
 @router.post("", response_model=GoalOut, status_code=status.HTTP_201_CREATED)
@@ -27,6 +27,7 @@ def create_goal(
         target_amount=body.target_amount,
         current_amount=body.current_amount or 0,
         deadline=body.deadline,
+        notes_json=body.notes_json,
     )
     db.add(goal)
     db.commit()
@@ -60,8 +61,19 @@ def update_goal(
         goal.title = body.title
     if body.target_amount is not None:
         goal.target_amount = body.target_amount
+    if body.current_amount is not None:
+        goal.current_amount = body.current_amount
     if body.deadline is not None:
         goal.deadline = body.deadline
+    if body.status is not None:
+        goal.status = body.status
+        goal.is_active = body.status != "archived"
+    if body.is_active is not None:
+        goal.is_active = body.is_active
+        if not body.is_active:
+            goal.status = "archived"
+    if body.notes_json is not None:
+        goal.notes_json = body.notes_json
     db.commit()
     db.refresh(goal)
     return goal
@@ -76,7 +88,8 @@ def delete_goal(
     goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="هدف یافت نشد")
-    db.delete(goal)
+    goal.status = "archived"
+    goal.is_active = False
     db.commit()
 
 

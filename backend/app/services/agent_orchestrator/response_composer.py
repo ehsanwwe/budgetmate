@@ -44,9 +44,17 @@ class ResponseComposer:
                 metadata={"intent": plan.intent},
             )
 
+        safe_hint = sanitize_user_message(plan.final_response_hint)
+        if safe_hint and any(r.executed for r in results):
+            return AgentFinalResponse(
+                message=safe_hint,
+                operations_summary=[r.summary or "" for r in results if r.summary],
+                metadata={"intent": plan.intent},
+            )
+
         inserted = [r for r in results if r.inserted_id]
         if inserted:
-            response = self._compose_insert(db, plan, inserted[-1])
+            response = self._compose_insert(db, plan, inserted)
             if response:
                 return response
 
@@ -59,7 +67,6 @@ class ResponseComposer:
             )
 
         select_message = self._compose_select_results(db, plan, results)
-        safe_hint = sanitize_user_message(plan.final_response_hint)
         if select_message:
             return AgentFinalResponse(
                 message=select_message,
@@ -89,7 +96,16 @@ class ResponseComposer:
             metadata={"intent": plan.intent},
         )
 
-    def _compose_insert(self, db: Session, plan: AgentPlan, result: AgentExecutionResult) -> AgentFinalResponse | None:
+    def _compose_insert(self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult]) -> AgentFinalResponse | None:
+        step_by_id = {step.step_id: step for step in plan.steps}
+        result = next(
+            (
+                item
+                for item in reversed(results)
+                if step_by_id.get(item.step_id) and step_by_id[item.step_id].table_name == "transactions"
+            ),
+            results[-1],
+        )
         tx = db.query(Transaction).filter(Transaction.id == result.inserted_id).first()
         if not tx:
             return None

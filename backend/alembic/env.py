@@ -20,6 +20,7 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.models.goal import Goal
+from app.models.future_commitment import FutureCommitment
 from app.models.chat import ChatMessage
 from app.models.activity import ActivityLog
 from app.models.agent_audit import AgentSqlAuditLog

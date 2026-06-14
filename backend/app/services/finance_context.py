@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.jalali import current_jalali_month, gregorian_to_jalali
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.future_commitment import FutureCommitment
 from app.models.goal import Goal
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
@@ -82,7 +83,15 @@ def build_finance_context(user: User, db: Session) -> dict:
     ).order_by(Transaction.date.desc(), Transaction.id.desc()).limit(10).all()
 
     days_in_month = calendar.monthrange(today.year, today.month)[1]
-    goals = db.query(Goal).filter(Goal.user_id == user.id, Goal.current_amount < Goal.target_amount).all()
+    goals = db.query(Goal).filter(
+        Goal.user_id == user.id,
+        Goal.current_amount < Goal.target_amount,
+        Goal.is_active == True,
+    ).all()
+    commitments = db.query(FutureCommitment).filter(
+        FutureCommitment.user_id == user.id,
+        FutureCommitment.status == "pending",
+    ).order_by(FutureCommitment.due_date.asc().nullslast(), FutureCommitment.id.desc()).limit(8).all()
 
     return {
         "user": {
@@ -122,4 +131,16 @@ def build_finance_context(user: User, db: Session) -> dict:
             for tx in recent
         ],
         "active_goals": [_goal_payload(goal, today) for goal in goals],
+        "future_commitments": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "amount": item.amount,
+                "due_date": item.due_date.isoformat() if item.due_date else None,
+                "due_month": item.due_month,
+                "status": item.status,
+                "description": item.description,
+            }
+            for item in commitments
+        ],
     }

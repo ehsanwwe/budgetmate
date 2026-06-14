@@ -13,7 +13,7 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.db import Base, get_db
 from app.main import app
-from app.models import AdminUser, AgentSqlAuditLog, Category, FinancialFact, Transaction, User
+from app.models import AdminUser, AgentSqlAuditLog, BehaviorInsight, Budget, Category, FinancialFact, FutureCommitment, Goal, Transaction, User
 from app.models.transaction import TransactionType
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.db_world import build_db_world
@@ -80,6 +80,12 @@ def test_db_world_exposes_only_allowed_tables_and_columns(db):
     user_columns = {col.name for col in tables["users"].columns}
     assert "phone" not in user_columns
     assert "is_blocked" not in user_columns
+    goal_ops = {op.value for op in tables["goals"].allowed_operations}
+    assert {"select", "insert", "update"}.issubset(goal_ops)
+    assert "status" in {col.name for col in tables["goals"].columns}
+    assert "future_commitments" in tables
+    commitment_ops = {op.value for op in tables["future_commitments"].allowed_operations}
+    assert {"select", "insert", "update"}.issubset(commitment_ops)
 
 
 def test_openai_provider_is_only_active_provider(monkeypatch):
@@ -314,6 +320,200 @@ def test_financial_fact_insert_is_user_scoped(db):
     fact = db.query(FinancialFact).filter(FinancialFact.id == result.inserted_id).first()
     assert fact.user_id == 1
     assert fact.fact_type == "project_income"
+
+
+def test_goal_insert_update_and_archive_are_policy_controlled(db):
+    create_step = AgentPlanStep(
+        step_id="g1",
+        operation_type=AgentOperationType.insert,
+        purpose="create home purchase goal",
+        table_name="goals",
+        sql="INSERT INTO goals (title, target_amount, current_amount, deadline, status) VALUES (:title, :target_amount, :current_amount, :deadline, :status)",
+        params={"title": "home purchase", "target_amount": "12 میلیارد تومان", "current_amount": 0, "deadline": "یک سال بعد", "status": "active"},
+    )
+    validation = SqlValidator().validate(create_step.operation_type, create_step.table_name, create_step.sql, create_step.params)
+    result = SqlExecutor().execute(db, user(db), create_step, validation, "goal_create")
+    assert result.executed
+    goal = db.query(Goal).filter(Goal.id == result.inserted_id).first()
+    assert goal.user_id == 1
+    assert goal.target_amount == 12_000_000_000
+    assert goal.is_active is True
+
+    update_step = AgentPlanStep(
+        step_id="g2",
+        operation_type=AgentOperationType.update,
+        purpose="archive selected goal",
+        table_name="goals",
+        sql="UPDATE goals SET status = :status, is_active = :is_active WHERE id = :id",
+        params={"status": "archived", "is_active": False, "id": goal.id},
+    )
+    update_validation = SqlValidator().validate(update_step.operation_type, update_step.table_name, update_step.sql, update_step.params)
+    update_result = SqlExecutor().execute(db, user(db), update_step, update_validation, "goal_archive")
+    assert update_result.executed
+    db.refresh(goal)
+    assert goal.status == "archived"
+    assert goal.is_active is False
+
+
+def test_goal_update_cannot_touch_another_user_goal(db):
+    other_goal = Goal(user_id=2, title="other laptop", target_amount=10_000_000, current_amount=0)
+    db.add(other_goal)
+    db.commit()
+    step = AgentPlanStep(
+        step_id="g1",
+        operation_type=AgentOperationType.update,
+        purpose="update matched goal",
+        table_name="goals",
+        sql="UPDATE goals SET deadline = :deadline WHERE id = :id",
+        params={"deadline": "یک سال بعد", "id": other_goal.id},
+    )
+    validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
+    result = SqlExecutor().execute(db, user(db), step, validation, "goal_update_scope")
+    assert result.executed is False
+    assert "current user" in result.error
+
+
+def test_tour_split_payment_creates_transaction_and_future_commitment(db):
+    plans = [
+        AgentPlan(
+            intent="tour_split_payment",
+            requires_db=True,
+            steps=[
+                AgentPlanStep(
+                    step_id="cats",
+                    operation_type=AgentOperationType.select,
+                    purpose="load real categories before choosing travel category",
+                    table_name="categories",
+                    sql="SELECT id, name FROM categories",
+                    params={},
+                )
+            ],
+        ),
+        AgentPlan(
+            intent="tour_split_payment",
+            requires_db=True,
+            steps=[
+                AgentPlanStep(
+                    step_id="tx",
+                    operation_type=AgentOperationType.insert,
+                    purpose="record current paid part of tour",
+                    table_name="transactions",
+                    sql="INSERT INTO transactions (category_id, amount, type, description, date) VALUES (:category_id, :amount, :type, :description, :date)",
+                    params={"category_id": 1, "amount": 30_000_000, "type": "expense", "description": "first tour payment", "date": local_today().isoformat()},
+                ),
+                AgentPlanStep(
+                    step_id="commit",
+                    operation_type=AgentOperationType.insert,
+                    purpose="record next month unpaid tour balance",
+                    table_name="future_commitments",
+                    sql="INSERT INTO future_commitments (title, amount, due_date, description, status, source) VALUES (:title, :amount, :due_date, :description, :status, :source)",
+                    params={"title": "remaining tour payment", "amount": 50_000_000, "due_date": "ماه بعد", "description": "tour balance due next month", "status": "pending", "source": "chat"},
+                ),
+            ],
+        ),
+        AgentPlan(intent="final", final_response_hint="ثبت شد. 30,000,000 تومان پرداخت فعلی تور ذخیره شد و 50,000,000 تومان تعهد ماه بعد ثبت شد."),
+    ]
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(db, user(db), "tour split payment"))
+    assert "50,000,000" in result.message
+    txn = db.query(Transaction).filter(Transaction.user_id == 1, Transaction.amount == 30_000_000).first()
+    commitment = db.query(FutureCommitment).filter(FutureCommitment.user_id == 1, FutureCommitment.amount == 50_000_000).first()
+    assert txn is not None
+    assert commitment is not None
+    assert commitment.status == "pending"
+
+
+def test_emotional_spending_plan_queries_context_and_stores_insight(db):
+    db.add(Budget(user_id=1, month=1, year=1405, amount=80_000_000))
+    db.commit()
+    plan = AgentPlan(
+        intent="emotional_spending_advice",
+        requires_db=True,
+        steps=[
+            AgentPlanStep(
+                step_id="budget",
+                operation_type=AgentOperationType.select,
+                purpose="read current budget before recommending discretionary cap",
+                table_name="budgets",
+                sql="SELECT id, amount FROM budgets",
+                params={},
+            ),
+            AgentPlanStep(
+                step_id="goals",
+                operation_type=AgentOperationType.select,
+                purpose="read active goals before spending advice",
+                table_name="goals",
+                sql="SELECT id, title, target_amount, current_amount, deadline, status, is_active FROM goals WHERE is_active = :active",
+                params={"active": True},
+            ),
+            AgentPlanStep(
+                step_id="insight",
+                operation_type=AgentOperationType.insert,
+                purpose="store emotional spending signal",
+                table_name="behavior_insights",
+                sql="INSERT INTO behavior_insights (insight_type, evidence_json, confidence) VALUES (:insight_type, :evidence_json, :confidence)",
+                params={"insight_type": "emotional_spending", "evidence_json": {"trigger": "sadness"}, "confidence": 0.8},
+            ),
+        ],
+    )
+    final_plan = AgentPlan(
+        intent="final",
+        final_response_hint="بهتر است برای خرج احساسی سقف کوچک و قابل کنترل بگذاری و خریدهای غیرضروری را 24 ساعت عقب بیندازی.",
+    )
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner([plan, final_plan])).run(db, user(db), "emotional spending advice"))
+    assert "چقدر میخواهی" not in result.message
+    assert "24" in result.message
+    insight = db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "emotional_spending").first()
+    assert insight is not None
+
+
+def test_laptop_goal_deadline_update_is_planner_driven(db):
+    goal = Goal(user_id=1, title="laptop purchase", target_amount=80_000_000, current_amount=20_000_000)
+    db.add(goal)
+    db.commit()
+    plans = [
+        AgentPlan(
+            intent="update_goal_deadline",
+            requires_db=True,
+            steps=[
+                AgentPlanStep(
+                    step_id="goals",
+                    operation_type=AgentOperationType.select,
+                    purpose="load goals before fuzzy matching laptop",
+                    table_name="goals",
+                    sql="SELECT id, title, target_amount, current_amount, deadline, status, is_active FROM goals WHERE is_active = :active",
+                    params={"active": True},
+                )
+            ],
+        ),
+        AgentPlan(
+            intent="update_goal_deadline",
+            requires_db=True,
+            steps=[
+                AgentPlanStep(
+                    step_id="update",
+                    operation_type=AgentOperationType.update,
+                    purpose="update matched laptop goal deadline",
+                    table_name="goals",
+                    sql="UPDATE goals SET deadline = :deadline WHERE id = :id",
+                    params={"deadline": "یک سال بعد", "id": goal.id},
+                )
+            ],
+        ),
+        AgentPlan(intent="final", final_response_hint="مهلت هدف خرید لپتاپ به یک سال بعد تغییر کرد."),
+    ]
+    result = asyncio.run(AgentOrchestrator(planner=SequencePlanner(plans)).run(db, user(db), "update laptop goal"))
+    db.refresh(goal)
+    assert goal.deadline == parse_relative_date("یک سال بعد")
+    assert "یک سال" in result.message
+
+
+def test_future_commitments_are_in_agent_context(db):
+    db.add(FutureCommitment(user_id=1, title="next month tour balance", amount=50_000_000, status="pending"))
+    db.commit()
+    from app.services.agent_orchestrator.context_builder import build_agent_context
+
+    context = build_agent_context(user(db), db)
+    assert context["future_commitments"][0]["amount"] == 50_000_000
 
 
 @pytest.mark.parametrize(

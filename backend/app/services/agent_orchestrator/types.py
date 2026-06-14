@@ -75,6 +75,7 @@ class TablePolicy(StrictModel):
     user_id_column: Optional[str] = "user_id"
     forbidden_columns: set[str] = Field(default_factory=set)
     insertable_columns: set[str] = Field(default_factory=set)
+    updateable_columns: set[str] = Field(default_factory=set)
     selectable_columns: set[str] = Field(default_factory=set)
     max_select_rows: int = 25
     system_only: bool = False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -34,6 +35,13 @@ def parse_relative_date(value: object | None) -> date:
         return today - timedelta(days=3)
     if raw in {"هفته پیش", "هفته گذشته", "هفته قبل"}:
         return today - timedelta(days=7)
+    if raw in {"یک سال بعد", "یک سال دیگر", "سال بعد", "سال آینده"}:
+        last_day = calendar.monthrange(today.year + 1, today.month)[1]
+        return date(today.year + 1, today.month, min(today.day, last_day))
+    if raw in {"ماه بعد", "ماه بعدی", "ماه آینده"}:
+        year = today.year + (1 if today.month == 12 else 0)
+        month = 1 if today.month == 12 else today.month + 1
+        return date(year, month, 1)
     return date.fromisoformat(raw)
 
 
