@@ -27,6 +27,7 @@ const mobileNavItems = [
   { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
   { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
   { href: "/budget", label: "بودجه", icon: Wallet },
+  { href: "/goals", label: "اهداف", icon: Target },
   { href: "/future-commitments", label: "تعهدات", icon: CalendarClock },
   { href: "/chat", label: "دستیار", icon: MessageCircle },
   { href: "/profile", label: "پروفایل", icon: User },
@@ -77,21 +78,21 @@ export default function NavBar() {
       </aside>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 start-0 end-0 bg-white border-t border-border flex justify-around py-2 z-40">
+      <nav className="md:hidden fixed bottom-0 start-0 end-0 bg-white border-t border-border flex justify-around px-1 py-2 z-40">
         {mobileNavItems.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             aria-label={label}
             className={cn(
-              "flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors",
+              "min-w-0 flex-1 flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 transition-colors",
               isNavItemActive(pathname, href)
                 ? "text-primary"
                 : "text-muted-foreground"
             )}
           >
             <Icon className="h-5 w-5" />
-            <span className="text-[10px]">{label}</span>
+            <span className="max-w-full truncate text-[10px]">{label}</span>
           </Link>
         ))}
       </nav>
