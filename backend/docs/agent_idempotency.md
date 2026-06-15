@@ -130,3 +130,15 @@ The script keeps the oldest row (lowest `id`) per `(user_id, title, amount)` gro
 ## Testing
 
 Phase 5.7 tests live in `backend/tests/test_agent_phase57.py` (24 tests covering all guarantees above).
+
+## Chat Clear Lifecycle
+
+`pending_agent_intents` now has an active lifecycle in the goal-intake gate:
+
+- `pending`: active transient conversation state.
+- `consumed`: completed by a successful user choice, such as inserting the goal.
+- `cancelled`: deactivated by chat-history clear or replacement with a newer active intent.
+
+`DELETE /chat/history` cancels all pending rows for that user. This prevents amount-only follow-ups or consultation prompts from completing stale state after the user has cleared the chat. It does not delete durable finance records, memories, facts, persona, warnings, or audit logs.
+
+Chat-session lifecycle tests live in `backend/tests/test_chat_session_lifecycle.py` and cover pending-intent cancellation, advisory cancellation, durable-data preservation, cancelled-intent ignore behavior, and the clear-history endpoint response.

@@ -82,6 +82,7 @@ export default function ChatPage() {
   const [waveformBars, setWaveformBars] = useState<number[]>(Array(BAR_COUNT).fill(0.15));
   const [sendingVoice, setSendingVoice] = useState(false);
   const [hasBudget, setHasBudget] = useState<boolean | null>(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -341,12 +342,16 @@ export default function ChatPage() {
   }
 
   async function clearHistory() {
+    if (clearingHistory) return;
+    setClearingHistory(true);
     try {
       await api.delete("/chat/history");
       setMessages([]);
       toast.success("تاریخچه پاک شد");
     } catch {
       toast.error("خطا در پاک کردن تاریخچه");
+    } finally {
+      setClearingHistory(false);
     }
   }
 
@@ -397,7 +402,11 @@ export default function ChatPage() {
               <p className="text-[11px] text-gray-400">جیبیار · آنلاین</p>
             </div>
           </div>
-          <button onClick={clearHistory} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+          <button
+              onClick={clearHistory}
+              disabled={clearingHistory}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             <Trash2 className="h-4 w-4 text-gray-400" />
           </button>
         </div>

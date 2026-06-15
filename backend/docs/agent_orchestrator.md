@@ -124,3 +124,12 @@ Manual Phase 3 checks:
 - `این ماه چقدر خرج کردم چقدر در آوردم`
 - `بیشترین خرج تو ماه گذشته مربوط به چی بوده`
 - `DROP TABLE users;`
+
+Chat clear boundary:
+
+- Clearing chat history is a conversation boundary. The next message starts with empty chat history and no active transient session.
+- `DELETE /chat/history` deletes chat messages and cancels active transient pending intents before the next turn can run.
+- The orchestrator and goal intake gate only load `pending_agent_intents.status = "pending"`. Intents marked `cancelled` by chat clear are ignored.
+- Durable context can still be loaded when relevant: goals, transactions, budgets, future commitments, Personal CFO facts, memories, persona, insights, warnings, and audit logs remain available.
+- Simple transaction registration after a clear should focus on the transaction and at most concise budget impact. It must not continue a cancelled advisory flow or reuse an old goal-intake follow-up.
+- Goal-specific advice after a clear requires either a new active advisory session or an explicit current user question about goals/advice.

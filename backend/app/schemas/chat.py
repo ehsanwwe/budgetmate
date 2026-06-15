@@ -27,3 +27,9 @@ class ChatHistoryResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ChatClearResponse(BaseModel):
+    cleared_messages: int
+    cancelled_pending_intents: int
+    cancelled_advisory_sessions: int

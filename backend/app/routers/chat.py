@@ -1,14 +1,15 @@
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.core.auth import get_current_user
 from app.models.user import User
 from app.models.chat import ChatMessage, MessageRole
-from app.schemas.chat import ChatMessageIn, ChatReply, ChatHistoryResponse, ChatMessageOut
+from app.schemas.chat import ChatClearResponse, ChatMessageIn, ChatReply, ChatHistoryResponse, ChatMessageOut
 from app.services.billing import INSUFFICIENT_TOKENS_MESSAGE, consume_chat_tokens, ensure_wallet
+from app.services.chat_session_lifecycle import clear_chat_history_and_transient_state
 from app.services.token_meter import estimate_tokens, estimate_chat_usage
 from app.services.stt import transcribe_audio
 from app.services.agent_orchestrator import AgentOrchestrator
@@ -183,10 +184,9 @@ async def voice_message(
     return {"transcript": transcript, "reply": reply, "message_id": assistant_msg.id}
 
 
-@router.delete("/history", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/history", response_model=ChatClearResponse)
 def clear_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    db.query(ChatMessage).filter(ChatMessage.user_id == current_user.id).delete()
-    db.commit()
+    return clear_chat_history_and_transient_state(db, current_user.id)

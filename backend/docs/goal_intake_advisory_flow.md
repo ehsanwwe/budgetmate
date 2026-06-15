@@ -196,3 +196,14 @@ DB World instructs the planner:
 10. دیروز ۴۰۰ هزار تومان خرید کردم
     → transaction
 ```
+
+---
+
+## Chat History Clear
+
+Clearing chat history cancels every active goal-intake pending intent for that user, including `consultation_active`.
+
+- Pending rows are marked `status="cancelled"` and `payload_json.state="cancelled"`.
+- The next turn cannot continue an old add-vs-consult choice, advisory session, amount clarification, or date clarification.
+- Saved goals remain durable. Unsaved goal-intake state is transient and does not survive chat clear.
+- A simple transaction after clear should pass through as a fresh transaction turn and must not mention the old advisory item unless the current message asks about it.
