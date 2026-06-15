@@ -236,6 +236,8 @@ Frontend will be available at: **http://localhost:3000**
 3. Use OTP code: **`123456`**
 4. You're in! Set a budget, add transactions, chat with the AI.
 
+Onboarding budget note: when a new user selects an income range, the initial current-month budget is set from the maximum value of that range. For example, `40-80 million toman` initializes the monthly budget to `80,000,000` toman. This initialization runs once when onboarding is completed and does not overwrite later customized budgets.
+
 For the admin panel:
 
 1. Open **http://localhost:3000/admin**
