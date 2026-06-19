@@ -13,39 +13,40 @@ import {
   CalendarClock,
 } from "lucide-react";
 
-const navItems = [
-  { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
-  { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
-  { href: "/budget", label: "بودجه", icon: Wallet },
-  { href: "/goals", label: "اهداف", icon: Target },
-  { href: "/future-commitments", label: "تعهدات آینده", icon: CalendarClock },
-  { href: "/chat", label: "دستیار", icon: MessageCircle },
-  { href: "/profile", label: "پروفایل", icon: User },
-];
+interface NavItem {
+  path: string;
+  label: string;
+  icon: React.ElementType;
+}
 
-const mobileNavItems = [
-  { href: "/dashboard", label: "داشبورد", icon: LayoutDashboard },
-  { href: "/transactions", label: "تراکنش‌ها", icon: ArrowLeftRight },
-  { href: "/budget", label: "بودجه", icon: Wallet },
-  { href: "/goals", label: "اهداف", icon: Target },
-  { href: "/future-commitments", label: "تعهدات", icon: CalendarClock },
-  { href: "/chat", label: "دستیار", icon: MessageCircle },
-  { href: "/profile", label: "پروفایل", icon: User },
-];
+function buildNavItems(locale: string): NavItem[] {
+  const base = `/${locale}`;
+  return [
+    { path: `${base}/dashboard`, label: "داشبورد", icon: LayoutDashboard },
+    { path: `${base}/transactions`, label: "تراکنش‌ها", icon: ArrowLeftRight },
+    { path: `${base}/budget`, label: "بودجه", icon: Wallet },
+    { path: `${base}/goals`, label: "اهداف", icon: Target },
+    { path: `${base}/future-commitments`, label: "تعهدات آینده", icon: CalendarClock },
+    { path: `${base}/chat`, label: "دستیار", icon: MessageCircle },
+    { path: `${base}/profile`, label: "پروفایل", icon: User },
+  ];
+}
 
 function isNavItemActive(pathname: string, href: string) {
-  if (href === "/profile") {
-    return pathname === "/profile" || pathname.startsWith("/billing");
+  if (href.endsWith("/profile")) {
+    return pathname === href || pathname.includes("/billing");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function NavBar() {
+export default function NavBar({ locale = "fa" }: { locale?: string }) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const displayName = user?.first_name
     ? [user.first_name, user.last_name].filter(Boolean).join(" ")
     : user?.name || user?.phone || "کاربر";
+
+  const navItems = buildNavItems(locale);
 
   return (
     <>
@@ -60,13 +61,13 @@ export default function NavBar() {
             <p className="text-xs text-muted-foreground">{displayName}</p>
           </div>
         </div>
-        {navItems.map(({ href, label, icon: Icon }) => (
+        {navItems.map(({ path, label, icon: Icon }) => (
           <Link
-            key={href}
-            href={href}
+            key={path}
+            href={path}
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-              isNavItemActive(pathname, href)
+              isNavItemActive(pathname ?? "", path)
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
@@ -79,14 +80,14 @@ export default function NavBar() {
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 start-0 end-0 bg-white border-t border-border flex justify-around px-1 py-2 z-40">
-        {mobileNavItems.map(({ href, label, icon: Icon }) => (
+        {navItems.map(({ path, label, icon: Icon }) => (
           <Link
-            key={href}
-            href={href}
+            key={path}
+            href={path}
             aria-label={label}
             className={cn(
               "min-w-0 flex-1 flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 transition-colors",
-              isNavItemActive(pathname, href)
+              isNavItemActive(pathname ?? "", path)
                 ? "text-primary"
                 : "text-muted-foreground"
             )}

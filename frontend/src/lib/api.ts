@@ -14,9 +14,19 @@ api.interceptors.request.use((config) => {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        // Send user's preferred language so backend can use it
+        const lang = parsed?.state?.user?.language;
+        if (lang) {
+          config.headers["Accept-Language"] = lang;
+        }
       }
     } catch {
       // ignore
+    }
+    // Also read locale from URL path
+    const pathLocale = window.location.pathname.split("/")[1];
+    if (["fa", "ar", "en", "de", "zh"].includes(pathLocale)) {
+      config.headers["X-Locale"] = pathLocale;
     }
   }
   return config;
