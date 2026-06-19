@@ -6,6 +6,10 @@ import { CalendarClock, CheckCircle2, Clock3, XCircle } from "lucide-react";
 import api from "@/lib/api";
 import { toman, jDate } from "@/lib/fmt";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t } from "@/i18n/getDictionary";
+import { getDirection } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,20 +30,6 @@ interface FutureCommitment {
   related_goal_id?: number | null;
 }
 
-const filters: { key: FilterKey; label: string }[] = [
-  { key: "pending", label: "در انتظار" },
-  { key: "paid", label: "پرداخت‌شده" },
-  { key: "cancelled", label: "لغوشده" },
-  { key: "next_month", label: "ماه آینده" },
-  { key: "until_next_year", label: "تا سال آینده" },
-];
-
-function statusLabel(status: CommitmentStatus) {
-  if (status === "paid") return "پرداخت‌شده";
-  if (status === "cancelled") return "لغوشده";
-  return "در انتظار";
-}
-
 function statusIcon(status: CommitmentStatus) {
   if (status === "paid") return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
   if (status === "cancelled") return <XCircle className="h-4 w-4 text-red-500" />;
@@ -47,6 +37,17 @@ function statusIcon(status: CommitmentStatus) {
 }
 
 export default function FutureCommitmentsPage() {
+  const { locale, dict } = useLocale();
+  const dir = getDirection(locale as Locale);
+
+  const filters: { key: FilterKey; label: string }[] = [
+    { key: "pending", label: t(dict, "futureCommitments.pending") },
+    { key: "paid", label: t(dict, "futureCommitments.paid") },
+    { key: "cancelled", label: t(dict, "futureCommitments.cancelled") },
+    { key: "next_month", label: t(dict, "futureCommitments.nextMonth") },
+    { key: "until_next_year", label: t(dict, "futureCommitments.untilNextYear") },
+  ];
+
   const [rows, setRows] = useState<FutureCommitment[]>([]);
   const [filter, setFilter] = useState<FilterKey>("pending");
   const [loading, setLoading] = useState(true);
@@ -64,24 +65,30 @@ export default function FutureCommitmentsPage() {
         const res = await api.get("/future-commitments", { params });
         setRows(res.data);
       } catch {
-        toast.error("خطا در بارگذاری تعهدات آینده");
+        toast.error(t(dict, "futureCommitments.loadError"));
       } finally {
         setLoading(false);
       }
     }
     void load();
-  }, [filter]);
+  }, [filter, dict]);
+
+  function statusLabel(status: CommitmentStatus): string {
+    if (status === "paid") return t(dict, "futureCommitments.paid");
+    if (status === "cancelled") return t(dict, "futureCommitments.cancelled");
+    return t(dict, "futureCommitments.pending");
+  }
 
   return (
-    <div className="space-y-4" dir="rtl">
+    <div className="space-y-4" dir={dir}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#2d1812]">تعهدات آینده</h1>
-          <p className="text-sm text-muted-foreground">پرداخت‌های برنامه‌ریزی‌شده، بدهی‌های نزدیک، و هزینه‌های آینده</p>
+          <h1 className="text-2xl font-bold text-[#2d1812]">{t(dict, "futureCommitments.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t(dict, "futureCommitments.subtitle")}</p>
         </div>
         <Card className="sm:min-w-56">
           <CardContent className="py-3">
-            <p className="text-xs text-muted-foreground">جمع این فیلتر</p>
+            <p className="text-xs text-muted-foreground">{t(dict, "futureCommitments.filterTotal")}</p>
             <p className="text-lg font-bold text-[#2d1812]">{toman(total)}</p>
           </CardContent>
         </Card>
@@ -111,8 +118,8 @@ export default function FutureCommitmentsPage() {
         <Card>
           <CardContent className="py-16 text-center">
             <CalendarClock className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="font-medium text-[#2d1812]">تعهدی برای این بازه ثبت نشده است.</p>
-            <p className="mt-1 text-sm text-muted-foreground">هر هزینه آینده‌ای که در چت ثبت شود اینجا نمایش داده می‌شود.</p>
+            <p className="font-medium text-[#2d1812]">{t(dict, "futureCommitments.emptyTitle")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t(dict, "futureCommitments.emptyHint")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -141,10 +148,18 @@ export default function FutureCommitmentsPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {row.due_date && <span>سررسید: {jDate(row.due_date)}</span>}
-                  {!row.due_date && row.due_month && <span>ماه سررسید: {row.due_month}</span>}
-                  {row.related_transaction_id && <span>مرتبط با تراکنش #{row.related_transaction_id}</span>}
-                  {row.related_goal_id && <span>مرتبط با هدف #{row.related_goal_id}</span>}
+                  {row.due_date && (
+                    <span>{t(dict, "futureCommitments.dueDateLabel").replace("{date}", jDate(row.due_date))}</span>
+                  )}
+                  {!row.due_date && row.due_month && (
+                    <span>{t(dict, "futureCommitments.dueMonthLabel").replace("{month}", row.due_month)}</span>
+                  )}
+                  {row.related_transaction_id && (
+                    <span>{t(dict, "futureCommitments.relatedTx").replace("{id}", String(row.related_transaction_id))}</span>
+                  )}
+                  {row.related_goal_id && (
+                    <span>{t(dict, "futureCommitments.relatedGoal").replace("{id}", String(row.related_goal_id))}</span>
+                  )}
                 </div>
                 {row.description && <p className="leading-7 text-[#2d1812]/75">{row.description}</p>}
               </CardContent>

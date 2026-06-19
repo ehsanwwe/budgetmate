@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.i18n.service import t as i18n_t
 from app.models.category import Category
 from app.models.goal import Goal
 from app.models.transaction import Transaction, TransactionType
@@ -22,8 +23,9 @@ _LEAKED_OP_RE = re.compile(
 )
 
 
-def _fmt(amount: int | None) -> str:
-    return f"{int(amount or 0):,} تومان"
+def _fmt(amount: int | None, locale: str = "fa") -> str:
+    unit = i18n_t("composer.toman", locale)
+    return f"{int(amount or 0):,} {unit}"
 
 
 def sanitize_user_message(message: str | None) -> str:
@@ -62,10 +64,11 @@ class ResponseComposer:
         plan: AgentPlan,
         results: list[AgentExecutionResult],
         fallback_message: str = "",
+        locale: str = "fa",
     ) -> AgentFinalResponse:
         if plan.clarification_question:
             return AgentFinalResponse(
-                message=sanitize_user_message(plan.clarification_question) or "لطفا درخواستت را کمی دقیق تر بنویس.",
+                message=sanitize_user_message(plan.clarification_question) or i18n_t("composer.clarification", locale),
                 metadata={"intent": plan.intent},
             )
 
@@ -86,9 +89,13 @@ class ResponseComposer:
             existing_id = skipped_with_existing[-1].existing_record_id
             goal = db.query(Goal).filter(Goal.id == existing_id).first()
             if goal:
-                deadline_text = f"، مهلت {goal.deadline.isoformat()}" if goal.deadline else ""
+                deadline_text = i18n_t("composer.goal_deadline_txt", locale, {"date": goal.deadline.isoformat()}) if goal.deadline else ""
                 return AgentFinalResponse(
-                    message=f"این هدف قبلاً ثبت شده بود؛ دوباره ثبت نکردم. هدف «{goal.title}» با مبلغ {_fmt(goal.target_amount)}{deadline_text} در اهداف فعال شما وجود دارد.",
+                    message=i18n_t("composer.duplicate_goal", locale, {
+                        "title": goal.title,
+                        "amount": _fmt(goal.target_amount, locale),
+                        "deadline": deadline_text,
+                    }),
                     operations_summary=["skipped duplicate goal"],
                     metadata={"intent": plan.intent, "existing_goal_id": existing_id},
                 )
@@ -99,7 +106,7 @@ class ResponseComposer:
             ok = self._verify_updates(db, plan, updated)
             if not ok:
                 return AgentFinalResponse(
-                    message="به‌روزرسانی در پایگاه‌داده تأیید نشد. لطفا دوباره امتحان کن.",
+                    message=i18n_t("composer.update_failed", locale),
                     metadata={"intent": plan.intent, "update_verification_failed": True},
                 )
 
@@ -117,24 +124,24 @@ class ResponseComposer:
         # Fallback DB-grounded responses (used when no good hint is available)
         inserted = [r for r in results if r.inserted_id and not r.skipped_duplicate]
         if inserted:
-            response = self._compose_insert(db, plan, inserted)
+            response = self._compose_insert(db, plan, inserted, locale)
             if response:
                 return response
 
         if updated:
-            response = self._compose_update_fallback(db, plan, updated)
+            response = self._compose_update_fallback(db, plan, updated, locale)
             if response:
                 return response
 
         rejected = [r for r in results if r.rejected_reason or r.error]
         if rejected:
             return AgentFinalResponse(
-                message=self._compose_rejected(plan, rejected),
+                message=self._compose_rejected(plan, rejected, locale),
                 operations_summary=["rejected unsafe operation"],
                 metadata={"intent": plan.intent, "rejected": True},
             )
 
-        select_message = self._compose_select_results(db, plan, results)
+        select_message = self._compose_select_results(db, plan, results, locale)
         if select_message:
             return AgentFinalResponse(
                 message=select_message,
@@ -144,12 +151,12 @@ class ResponseComposer:
 
         if fallback_message:
             return AgentFinalResponse(
-                message=sanitize_user_message(fallback_message) or "فعلا نتوانستم پاسخ نهایی مطمئنی بسازم.",
+                message=sanitize_user_message(fallback_message) or i18n_t("composer.uncertain_fallback", locale),
                 metadata={"intent": plan.intent},
             )
 
         return AgentFinalResponse(
-            message="متوجه شدم. برای ثبت یا تحلیل مالی، لطفا مبلغ و موضوع را کمی دقیق تر بگو.",
+            message=i18n_t("composer.general_fallback", locale),
             metadata={"intent": plan.intent},
         )
 
@@ -166,7 +173,9 @@ class ResponseComposer:
                     return False
         return True
 
-    def _compose_update_fallback(self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult]) -> AgentFinalResponse | None:
+    def _compose_update_fallback(
+        self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
+    ) -> AgentFinalResponse | None:
         """DB-grounded fallback for update turns when no clean hint is available."""
         step_by_id = {step.step_id: step for step in plan.steps}
         goal_update = next(
@@ -182,29 +191,31 @@ class ResponseComposer:
         goal = db.query(Goal).filter(Goal.id == goal_update.updated_id).first()
         if not goal:
             return None
-        deadline = f" با مهلت {goal.deadline.isoformat()}" if goal.deadline else ""
+        deadline = i18n_t("composer.goal_deadline_update", locale, {"date": goal.deadline.isoformat()}) if goal.deadline else ""
         return AgentFinalResponse(
-            message=f"به‌روزرسانی شد. هدف {goal.title}{deadline} ذخیره شد.",
+            message=i18n_t("composer.goal_updated", locale, {"title": goal.title, "deadline": deadline}),
             operations_summary=[r.summary or "" for r in results if r.summary],
             metadata={"intent": plan.intent, "goal_id": goal.id},
         )
 
-    def _compose_rejected(self, plan: AgentPlan, rejected: list[AgentExecutionResult]) -> str:
+    def _compose_rejected(self, plan: AgentPlan, rejected: list[AgentExecutionResult], locale: str = "fa") -> str:
         reasons = " ".join(str(r.rejected_reason or r.error or "").lower() for r in rejected)
         if any(marker in reasons for marker in ("destructive", "administrative", "forbidden", "multiple statements", "comments", "drop", "delete", "alter")):
-            return "عملیات نامعتبر است و به شکل امن اجرا نشد."
+            return i18n_t("composer.rejected_destructive", locale)
         if "history_context" in reasons:
-            return "این درخواست از تاریخچه مکالمه شناسایی شد و دوباره اجرا نشد."
+            return i18n_t("composer.rejected_history", locale)
 
         intent = (plan.intent or "").lower()
         step_text = " ".join(str(step.purpose or "").lower() for step in plan.steps)
         if "goal" in intent or "goal" in step_text:
-            return "برای پاسخ دقیق باید اهداف ثبت‌شده را بررسی کنم، اما برنامه پایگاه‌داده کامل و معتبر نبود. لطفا دوباره بپرس."
+            return i18n_t("composer.rejected_goal", locale)
         if any(word in intent or word in step_text for word in ("advice", "budget", "spending", "cfo", "financial_status")):
-            return "برای این تحلیل، اطلاعات مالی شما بررسی می‌شود. اگر سوال مشخصی داری — مثلاً بیشترین هزینه این ماه چی بوده یا چقدر بودجه باقی مانده — بپرس تا از داده‌های واقعی پاسخ بدم."
-        return "فعلاً این عملیات با قوانین ایمنی پایگاه‌داده سازگار نشد. اگر درخواست مالی عادی است، دوباره با همان جزئیات بپرس."
+            return i18n_t("composer.rejected_advice", locale)
+        return i18n_t("composer.rejected_default", locale)
 
-    def _compose_insert(self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult]) -> AgentFinalResponse | None:
+    def _compose_insert(
+        self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
+    ) -> AgentFinalResponse | None:
         step_by_id = {step.step_id: step for step in plan.steps}
 
         goal_result = next(
@@ -226,12 +237,16 @@ class ResponseComposer:
         if goal_result and not tx_result:
             goal = db.query(Goal).filter(Goal.id == goal_result.inserted_id).first()
             if goal:
-                deadline_text = f"، مهلت {goal.deadline.isoformat()}" if goal.deadline else ""
-                parts = [f"هدف '{goal.title}' با مبلغ {_fmt(goal.target_amount)} ثبت شد{deadline_text}."]
+                deadline_text = i18n_t("composer.goal_deadline_txt", locale, {"date": goal.deadline.isoformat()}) if goal.deadline else ""
+                msg = i18n_t("composer.goal_created", locale, {
+                    "title": goal.title,
+                    "amount": _fmt(goal.target_amount, locale),
+                    "deadline": deadline_text,
+                })
                 if commitment_result:
-                    parts.append("تعهد مالی مرتبط نیز ثبت شد.")
+                    msg = msg + " " + i18n_t("composer.goal_with_commitment", locale)
                 return AgentFinalResponse(
-                    message=" ".join(parts),
+                    message=msg,
                     operations_summary=[r.summary or "" for r in results if r.summary],
                     metadata={"intent": plan.intent, "goal_id": goal.id},
                 )
@@ -240,9 +255,17 @@ class ResponseComposer:
             from app.models.future_commitment import FutureCommitment
             commitment = db.query(FutureCommitment).filter(FutureCommitment.id == commitment_result.inserted_id).first()
             if commitment:
-                due_text = f"، موعد {commitment.due_date.isoformat()}" if commitment.due_date else (f"، {commitment.due_month}" if commitment.due_month else "")
+                due_text = (
+                    i18n_t("composer.commitment_due_date", locale, {"date": commitment.due_date.isoformat()})
+                    if commitment.due_date
+                    else (i18n_t("composer.commitment_due_month", locale, {"month": commitment.due_month}) if commitment.due_month else "")
+                )
                 return AgentFinalResponse(
-                    message=f"تعهد آینده '{commitment.title}' به مبلغ {_fmt(commitment.amount)}{due_text} ثبت شد.",
+                    message=i18n_t("composer.commitment_created", locale, {
+                        "title": commitment.title,
+                        "amount": _fmt(commitment.amount, locale),
+                        "due": due_text,
+                    }),
                     operations_summary=[r.summary or "" for r in results if r.summary],
                     metadata={"intent": plan.intent, "commitment_id": commitment.id},
                 )
@@ -256,12 +279,12 @@ class ResponseComposer:
         if not tx:
             return None
         category = db.query(Category).filter(Category.id == tx.category_id).first() if tx.category_id else None
-        kind = "درآمد" if tx.type == TransactionType.income else "هزینه"
-        cat_text = f" در دسته {category.name}" if category else ""
+        kind = i18n_t("composer.kind_income", locale) if tx.type == TransactionType.income else i18n_t("composer.kind_expense", locale)
+        cat_text = i18n_t("composer.cat_in", locale, {"name": category.name}) if category else ""
         suggestion = (
-            "اگر این درآمد تکرارشونده است، می توانیم بعدا آن را در برنامه ماهانه ات لحاظ کنیم."
+            i18n_t("composer.tx_income_suggestion", locale)
             if tx.type == TransactionType.income
-            else "بهتر است آخر هفته یک نگاه کوتاه به روند خرج های این ماه داشته باشیم."
+            else i18n_t("composer.tx_expense_suggestion", locale)
         )
 
         extra_parts = []
@@ -269,10 +292,22 @@ class ResponseComposer:
             from app.models.future_commitment import FutureCommitment
             commitment = db.query(FutureCommitment).filter(FutureCommitment.id == commitment_result.inserted_id).first()
             if commitment:
-                due_text = f" موعد {commitment.due_date.isoformat()}" if commitment.due_date else (f" {commitment.due_month}" if commitment.due_month else "")
-                extra_parts.append(f"تعهد آینده {_fmt(commitment.amount)}{due_text} هم ثبت شد.")
+                due_text = (
+                    i18n_t("composer.commitment_due_date", locale, {"date": commitment.due_date.isoformat()})
+                    if commitment.due_date
+                    else (i18n_t("composer.commitment_due_month", locale, {"month": commitment.due_month}) if commitment.due_month else "")
+                )
+                extra_parts.append(i18n_t("composer.tx_commitment_also", locale, {
+                    "amount": _fmt(commitment.amount, locale),
+                    "due": due_text,
+                }))
 
-        message = f"ثبت شد. {kind} {_fmt(tx.amount)} برای {tx.description or kind}{cat_text} ذخیره شد."
+        message = i18n_t("composer.tx_recorded", locale, {
+            "kind": kind,
+            "amount": _fmt(tx.amount, locale),
+            "desc": tx.description or kind,
+            "cat": cat_text,
+        })
         if extra_parts:
             message += " " + " ".join(extra_parts)
         else:
@@ -284,7 +319,9 @@ class ResponseComposer:
             metadata={"intent": plan.intent, "transaction_id": tx.id},
         )
 
-    def _compose_select_results(self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult]) -> str | None:
+    def _compose_select_results(
+        self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
+    ) -> str | None:
         step_by_id = {step.step_id: step for step in plan.steps}
         totals: dict[str, int] = {}
         top_category: tuple[str, int] | None = None
@@ -315,10 +352,10 @@ class ResponseComposer:
             if "category_id" in row and total is not None:
                 category = db.query(Category).filter(Category.id == int(row["category_id"])).first() if row.get("category_id") is not None else None
                 row_name = row.get("name") or row.get("category_name")
-                top_category = (str(row_name or (category.name if category else "سایر")), total)
+                top_category = (str(row_name or (category.name if category else i18n_t("composer.kind_expense", locale))), total)
                 continue
             if ("name" in row or "category_name" in row) and total is not None:
-                top_category = (str(row.get("name") or row.get("category_name") or "سایر"), total)
+                top_category = (str(row.get("name") or row.get("category_name") or i18n_t("composer.kind_expense", locale)), total)
                 continue
             tx_type = self._step_transaction_type(step)
             if tx_type and total is not None:
@@ -338,53 +375,77 @@ class ResponseComposer:
             return None
 
         if goal_rows and ("goal" in goal_text or "هدف" in goal_text or "goal" in (plan.intent or "").lower()):
-            return self._compose_goal_rows(goal_rows)
+            return self._compose_goal_rows(goal_rows, locale)
 
         if "expense" in totals and "income" in totals:
             expense = totals.get("expense", 0)
             income = totals.get("income", 0)
             balance = income - expense
             if expense and income:
-                balance_text = f"تراز ثبت شده شما {_fmt(abs(balance))} {'مثبت' if balance >= 0 else 'منفی'} است."
-                return f"در این بازه {_fmt(expense)} هزینه و {_fmt(income)} درآمد ثبت کرده اید. {balance_text}"
+                direction = i18n_t("composer.select_balance_positive", locale) if balance >= 0 else i18n_t("composer.select_balance_negative", locale)
+                return i18n_t("composer.select_both", locale, {
+                    "expense": _fmt(expense, locale),
+                    "income": _fmt(income, locale),
+                    "balance": _fmt(abs(balance), locale),
+                    "direction": direction,
+                })
             if expense and not income:
-                return f"در این بازه {_fmt(expense)} هزینه ثبت شده اما درآمدی ثبت نشده است."
+                return i18n_t("composer.select_expense_only", locale, {"amount": _fmt(expense, locale)})
             if income and not expense:
-                return f"در این بازه درآمد شما {_fmt(income)} بوده و هزینه ای ثبت نشده است."
-            return "برای این بازه درآمد یا هزینه ای ثبت نشده است."
+                return i18n_t("composer.select_income_only", locale, {"amount": _fmt(income, locale)})
+            return i18n_t("composer.select_no_expense", locale)
 
         if "expense" in totals:
             expense = totals.get("expense", 0)
-            return f"در این بازه مجموعا {_fmt(expense)} هزینه ثبت شده است." if expense else "برای این بازه هزینه ای ثبت نشده است."
+            return (
+                i18n_t("composer.select_expense_only", locale, {"amount": _fmt(expense, locale)})
+                if expense
+                else i18n_t("composer.select_no_expense", locale)
+            )
         if "income" in totals:
             income = totals.get("income", 0)
-            return f"درآمد شما در این بازه مجموعا {_fmt(income)} بوده است." if income else "برای این بازه درآمدی ثبت نشده است."
+            return (
+                i18n_t("composer.select_income_only", locale, {"amount": _fmt(income, locale)})
+                if income
+                else i18n_t("composer.select_no_income", locale)
+            )
         if top_category:
             name, amount = top_category
-            return f"بیشترین خرج این بازه مربوط به دسته {name} با مجموع {_fmt(amount)} بوده است." if amount else "برای این بازه هزینه ای ثبت نشده است."
+            return (
+                i18n_t("composer.select_top_category", locale, {"name": name, "amount": _fmt(amount, locale)})
+                if amount
+                else i18n_t("composer.select_no_data", locale)
+            )
         if goal_rows:
-            return self._compose_goal_rows(goal_rows)
+            return self._compose_goal_rows(goal_rows, locale)
         return None
 
-    def _compose_goal_rows(self, rows: list[dict[str, Any]]) -> str:
+    def _compose_goal_rows(self, rows: list[dict[str, Any]], locale: str = "fa") -> str:
         visible_rows = [
             row
             for row in rows
             if row.get("is_active", True) is not False and str(row.get("status") or "active") != "archived"
         ]
         if not visible_rows:
-            return "فعلاً هدف مالی فعالی برای شما ثبت نشده است."
+            return i18n_t("composer.goals_no_active", locale)
 
-        lines = ["اهداف فعال شما:"]
+        lines = [i18n_t("composer.goals_active_header", locale)]
         for row in visible_rows[:8]:
-            title = str(row.get("title") or "هدف مالی")
+            title = str(row.get("title") or "")
             target = int(row.get("target_amount") or 0)
             current = int(row.get("current_amount") or 0)
             remaining = max(target - current, 0)
             progress = int((current / target) * 100) if target else 0
             deadline = row.get("deadline")
-            deadline_text = f"، مهلت {deadline}" if deadline else ""
-            lines.append(f"- {title}: هدف {_fmt(target)}، پس‌انداز فعلی {_fmt(current)}، باقی‌مانده {_fmt(remaining)}، پیشرفت {progress}%{deadline_text}")
+            deadline_text = i18n_t("composer.goals_deadline", locale, {"date": deadline}) if deadline else ""
+            lines.append(i18n_t("composer.goals_active_row", locale, {
+                "title": title,
+                "target": _fmt(target, locale),
+                "current": _fmt(current, locale),
+                "remaining": _fmt(remaining, locale),
+                "progress": progress,
+                "deadline": deadline_text,
+            }))
         return "\n".join(lines)
 
     def _extract_total(self, row: dict[str, Any]) -> int | None:

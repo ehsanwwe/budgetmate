@@ -4,6 +4,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { toman, toFa, jDate } from "@/lib/fmt";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t } from "@/i18n/getDictionary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +38,7 @@ interface Transaction {
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#64748b"];
 
 export default function DashboardPage() {
+  const { locale, dict } = useLocale();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,13 +53,13 @@ export default function DashboardPage() {
         setSummary(sumRes.data);
         setTransactions(txRes.data.items || txRes.data);
       } catch {
-        toast.error("خطا در بارگذاری اطلاعات");
+        toast.error(t(dict, "dashboard.loadError"));
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [dict]);
 
   if (loading) return <DashboardSkeleton />;
 
@@ -70,21 +73,22 @@ export default function DashboardPage() {
     value: c.amount,
   }));
   const otherSum = (summary?.by_category || []).slice(6).reduce((a, b) => a + b.amount, 0);
-  if (otherSum > 0) pieData.push({ name: "سایر", value: otherSum });
+  if (otherSum > 0) pieData.push({ name: t(dict, "dashboard.other"), value: otherSum });
 
+  const amountKey = locale === "fa" ? "مبلغ" : t(dict, "common.amount");
   const lineData = (summary?.daily || []).map((d) => ({
     name: jDate(d.date),
-    مبلغ: d.amount,
+    [amountKey]: d.amount,
   }));
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">داشبورد</h1>
+        <h1 className="text-2xl font-bold">{t(dict, "dashboard.title")}</h1>
         <Button asChild>
-          <Link href="/chat">
+          <Link href={`/${locale}/chat`}>
             <MessageCircle className="h-4 w-4" />
-            گفت‌وگو با دستیار
+            {t(dict, "dashboard.talkToAssistant")}
           </Link>
         </Button>
       </div>
@@ -92,19 +96,19 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="بودجه ماهانه"
+          title={t(dict, "dashboard.monthlyBudget")}
           value={toman(budget)}
           icon={<Wallet className="h-5 w-5 text-indigo-500" />}
           color="bg-indigo-50"
         />
         <StatCard
-          title="خرج این ماه"
+          title={t(dict, "dashboard.spentThisMonth")}
           value={toman(spent)}
           icon={<TrendingDown className="h-5 w-5 text-rose-500" />}
           color="bg-rose-50"
         />
         <StatCard
-          title="باقی‌مانده"
+          title={t(dict, "dashboard.remaining")}
           value={toman(remaining)}
           icon={<TrendingUp className="h-5 w-5 text-emerald-500" />}
           color="bg-emerald-50"
@@ -116,7 +120,7 @@ export default function DashboardPage() {
                 <Target className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">درصد مصرف</p>
+                <p className="text-xs text-muted-foreground">{t(dict, "dashboard.budgetConsumption")}</p>
                 <p className="text-lg font-bold">{toFa(percent)}٪</p>
               </div>
             </div>
@@ -130,7 +134,7 @@ export default function DashboardPage() {
         {pieData.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">هزینه‌ها بر اساس دسته</CardTitle>
+              <CardTitle className="text-base">{t(dict, "dashboard.expensesByCategory")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -148,7 +152,7 @@ export default function DashboardPage() {
         {lineData.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">هزینه‌های ۷ روز اخیر</CardTitle>
+              <CardTitle className="text-base">{t(dict, "dashboard.last7days")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -157,7 +161,7 @@ export default function DashboardPage() {
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => toFa(Math.round(v / 1000) + "ک")} />
                   <Tooltip formatter={(v) => toman(Number(v))} />
                   <Legend />
-                  <Line type="monotone" dataKey="مبلغ" stroke="#6366f1" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey={amountKey} stroke="#6366f1" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -169,9 +173,9 @@ export default function DashboardPage() {
       {transactions.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">آخرین تراکنش‌ها</CardTitle>
+            <CardTitle className="text-base">{t(dict, "dashboard.latestTransactions")}</CardTitle>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/transactions">مشاهده همه</Link>
+              <Link href={`/${locale}/transactions`}>{t(dict, "dashboard.viewAll")}</Link>
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -179,7 +183,7 @@ export default function DashboardPage() {
               <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-0">
                 <div className="flex items-center gap-2">
                   <Badge variant={tx.type === "expense" ? "destructive" : "success"}>
-                    {tx.type === "expense" ? "هزینه" : "درآمد"}
+                    {tx.type === "expense" ? t(dict, "transactions.expense") : t(dict, "transactions.income")}
                   </Badge>
                   <span className="text-sm font-medium">{tx.description}</span>
                   <span className="text-xs text-muted-foreground">{tx.category_name}</span>

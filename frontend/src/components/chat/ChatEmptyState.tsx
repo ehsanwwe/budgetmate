@@ -2,14 +2,10 @@
 import { motion } from "framer-motion";
 import { Smile, MessageCircle, Settings, Sparkles, Mic, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-const SUGGESTED_PROMPTS = [
-  "ماهانه چقدر پس‌انداز کنم؟",
-  "خرج‌های این ماهم رو خلاصه کن",
-  "برای خرید لپ‌تاپ ۸۰ میلیونی بودجه‌بندی کن",
-  "چطور هزینه‌های غیرضروری رو کم کنم؟",
-  "نکات پس‌انداز برای دانشجو",
-];
+import { useLocale } from "@/i18n/LocaleContext";
+import { t } from "@/i18n/getDictionary";
+import { getDirection } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
 
 interface ChatEmptyStateProps {
   firstName: string;
@@ -23,21 +19,29 @@ interface ChatEmptyStateProps {
 }
 
 export default function ChatEmptyState({
-                                         firstName,
-                                         hasBudget,
-                                         input,
-                                         onInputChange,
-                                         onSend,
-                                         onPromptClick,
-                                         onVoiceModeClick,
-                                         streaming,
-                                       }: ChatEmptyStateProps) {
+  firstName,
+  hasBudget,
+  input,
+  onInputChange,
+  onSend,
+  onPromptClick,
+  onVoiceModeClick,
+  streaming,
+}: ChatEmptyStateProps) {
   const router = useRouter();
+  const { locale, dict } = useLocale();
+  const dir = getDirection(locale as Locale);
+
+  const suggestions: string[] = Array.isArray(dict.chatEmpty?.suggestions)
+    ? (dict.chatEmpty.suggestions as string[])
+    : [];
+
+  const greeting = t(dict, "chatEmpty.greeting").replace("{name}", firstName ? ` ${firstName}` : "");
 
   return (
       <div
           className="flex h-[calc(100dvh-5rem)] min-h-0 w-full max-w-full flex-col overflow-hidden bg-[#f5f1eb] md:h-[calc(100dvh-2rem)]"
-          dir="rtl"
+          dir={dir}
       >
         {/* 1. Top header — minimal, two icon buttons */}
         <div className="flex items-center justify-between px-4 py-3 shrink-0">
@@ -46,7 +50,7 @@ export default function ChatEmptyState({
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
               className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:shadow-md transition-shadow"
-              aria-label="تاریخچه گفتگو"
+              aria-label={t(dict, "chatEmpty.ariaHistory")}
           >
             <MessageCircle className="w-5 h-5 text-[#2d1812]" />
           </motion.button>
@@ -56,8 +60,8 @@ export default function ChatEmptyState({
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
               className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center hover:shadow-md transition-shadow"
-              aria-label="تنظیمات"
-              onClick={() => router.push("/profile")}
+              aria-label={t(dict, "chatEmpty.ariaSettings")}
+              onClick={() => router.push(`/${locale}/profile`)}
           >
             <Settings className="w-5 h-5 text-[#2d1812]" />
           </motion.button>
@@ -82,7 +86,7 @@ export default function ChatEmptyState({
               transition={{ duration: 0.4, delay: 0.22 }}
               className="mb-2 text-2xl font-extrabold text-[#2d1812] sm:mb-3 sm:text-3xl"
           >
-            سلام{firstName ? ` ${firstName}` : ""}!
+            {greeting}
           </motion.h1>
 
           {/* Subtitle */}
@@ -92,10 +96,10 @@ export default function ChatEmptyState({
               transition={{ duration: 0.4, delay: 0.34 }}
               className="max-w-xs text-sm leading-relaxed text-gray-600 sm:text-base"
           >
-            من جیبیارم،{" "}
-            <span className="text-emerald-500 font-semibold">دستیار مالی هوشمندت</span>.
+            {t(dict, "chatEmpty.subtitle")}{" "}
+            <span className="text-emerald-500 font-semibold">{t(dict, "chatEmpty.subtitleHighlight")}</span>.
             <br />
-            هر سوالی درباره بودجه، خرج‌ها یا پس‌اندازت داری بپرس.
+            {t(dict, "chatEmpty.subtitleRest")}
           </motion.p>
         </div>
 
@@ -109,15 +113,15 @@ export default function ChatEmptyState({
           {/* Budget onboarding card — only when no budget for current month */}
           {hasBudget === false && (
               <button
-                  onClick={() => router.push("/budget")}
+                  onClick={() => router.push(`/${locale}/budget`)}
                   className="w-full flex items-center gap-3 bg-white rounded-2xl p-4 border border-gray-200/80 shadow-sm hover:shadow-md transition-shadow text-start"
               >
                 <div className="w-9 h-9 rounded-full bg-[#2d1812] flex items-center justify-center shrink-0">
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-[#2d1812] text-sm">بودجه ماهانه‌ات رو تنظیم کن</p>
-                  <p className="text-xs text-gray-500 mt-0.5">برای مشاوره دقیق‌تر، بودجه‌ت رو وارد کن ←</p>
+                  <p className="font-semibold text-[#2d1812] text-sm">{t(dict, "chatEmpty.budgetCardTitle")}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{t(dict, "chatEmpty.budgetCardHint")}</p>
                 </div>
               </button>
           )}
@@ -127,9 +131,9 @@ export default function ChatEmptyState({
               className="flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
           >
-            {SUGGESTED_PROMPTS.map((prompt) => (
+            {suggestions.map((prompt, i) => (
                 <button
-                    key={prompt}
+                    key={i}
                     onClick={() => onPromptClick(prompt)}
                     className="shrink-0 text-xs bg-white border border-gray-200 text-[#2d1812] px-4 py-2 rounded-full shadow-sm hover:shadow-md hover:border-gray-300 transition-all whitespace-nowrap"
                 >
@@ -157,7 +161,7 @@ export default function ChatEmptyState({
                     onSend();
                   }
                 }}
-                placeholder="از من بپرس..."
+                placeholder={t(dict, "chatEmpty.inputPlaceholder")}
                 disabled={streaming}
                 className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm text-[#2d1812] shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20"
             />

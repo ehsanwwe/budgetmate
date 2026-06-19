@@ -9,7 +9,7 @@ import type { Locale } from "@/i18n/config";
 export default function LocaleHome() {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
-  const { locale } = useLocale();
+  const { locale, dict } = useLocale();
 
   useEffect(() => {
     if (token) {
@@ -51,7 +51,7 @@ export default function LocaleHome() {
         onClick={() => router.push(`/${locale}/login`)}
         className="w-full max-w-xs py-4 rounded-full bg-[#2d1812] text-white font-bold text-lg hover:bg-[#2d1812]/90 transition"
       >
-        {locale === "fa" ? "ورود" : locale === "ar" ? "تسجيل الدخول" : locale === "de" ? "Anmelden" : locale === "zh" ? "登录" : "Login"}
+        {dict.home?.loginBtn || "Login"}
       </button>
     </div>
   );

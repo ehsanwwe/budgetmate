@@ -59,6 +59,7 @@ class AgentOrchestrator:
         history: list[dict] | None = None,
         chat_mode: str | None = None,
     ) -> AgentFinalResponse:
+        locale: str = getattr(user, "language", None) or "fa"
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
 
@@ -91,7 +92,7 @@ class AgentOrchestrator:
                     [step.operation_type.value for step in plan.steps],
                 )
             if plan.clarification_question:
-                return self.composer.compose(db, plan, all_results)
+                return self.composer.compose(db, plan, all_results, locale=locale)
 
             actionable = [
                 s
@@ -101,8 +102,8 @@ class AgentOrchestrator:
             if not actionable:
                 if last_action_plan and all_results:
                     composed_plan = last_action_plan.model_copy(update={"final_response_hint": plan.final_response_hint})
-                    return self.composer.compose(db, composed_plan, all_results, fallback_message=plan.final_response_hint or "")
-                return self.composer.compose(db, plan, all_results, fallback_message=plan.final_response_hint or "")
+                    return self.composer.compose(db, composed_plan, all_results, fallback_message=plan.final_response_hint or "", locale=locale)
+                return self.composer.compose(db, plan, all_results, fallback_message=plan.final_response_hint or "", locale=locale)
 
             last_action_plan = plan
             had_repairable_failure = False
@@ -147,7 +148,7 @@ class AgentOrchestrator:
 
                 if not result.allowed or result.error:
                     if self._is_clearly_malicious(result):
-                        return self.composer.compose(db, plan, all_results)
+                        return self.composer.compose(db, plan, all_results, locale=locale)
                     had_repairable_failure = True
                     break
 
@@ -161,7 +162,7 @@ class AgentOrchestrator:
             if had_repairable_failure:
                 continue
 
-        return self.composer.compose(db, last_action_plan or last_plan, all_results, fallback_message=last_plan.final_response_hint or "")
+        return self.composer.compose(db, last_action_plan or last_plan, all_results, fallback_message=last_plan.final_response_hint or "", locale=locale)
 
     def _validate_and_execute(
         self,

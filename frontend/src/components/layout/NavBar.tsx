@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useLocale } from "@/i18n/LocaleContext";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   Wallet,
   CalendarClock,
 } from "lucide-react";
+import type { Dictionary } from "@/i18n/getDictionary";
 
 interface NavItem {
   path: string;
@@ -19,16 +21,17 @@ interface NavItem {
   icon: React.ElementType;
 }
 
-function buildNavItems(locale: string): NavItem[] {
+function buildNavItems(locale: string, dict: Dictionary): NavItem[] {
   const base = `/${locale}`;
+  const n = dict.nav;
   return [
-    { path: `${base}/dashboard`, label: "داشبورد", icon: LayoutDashboard },
-    { path: `${base}/transactions`, label: "تراکنش‌ها", icon: ArrowLeftRight },
-    { path: `${base}/budget`, label: "بودجه", icon: Wallet },
-    { path: `${base}/goals`, label: "اهداف", icon: Target },
-    { path: `${base}/future-commitments`, label: "تعهدات آینده", icon: CalendarClock },
-    { path: `${base}/chat`, label: "دستیار", icon: MessageCircle },
-    { path: `${base}/profile`, label: "پروفایل", icon: User },
+    { path: `${base}/dashboard`, label: n.dashboard, icon: LayoutDashboard },
+    { path: `${base}/transactions`, label: n.transactions, icon: ArrowLeftRight },
+    { path: `${base}/budget`, label: n.budgets, icon: Wallet },
+    { path: `${base}/goals`, label: n.goals, icon: Target },
+    { path: `${base}/future-commitments`, label: n.futureCommitments, icon: CalendarClock },
+    { path: `${base}/chat`, label: n.chat, icon: MessageCircle },
+    { path: `${base}/profile`, label: n.profile, icon: User },
   ];
 }
 
@@ -42,11 +45,12 @@ function isNavItemActive(pathname: string, href: string) {
 export default function NavBar({ locale = "fa" }: { locale?: string }) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const { dict } = useLocale();
   const displayName = user?.first_name
     ? [user.first_name, user.last_name].filter(Boolean).join(" ")
-    : user?.name || user?.phone || "کاربر";
+    : user?.name || user?.phone || dict.nav.userDefault;
 
-  const navItems = buildNavItems(locale);
+  const navItems = buildNavItems(locale, dict);
 
   return (
     <>
@@ -57,7 +61,7 @@ export default function NavBar({ locale = "fa" }: { locale?: string }) {
             <Wallet className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="font-bold text-sm">جیبیار</p>
+            <p className="font-bold text-sm">{dict.nav.appName}</p>
             <p className="text-xs text-muted-foreground">{displayName}</p>
           </div>
         </div>

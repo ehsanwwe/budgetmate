@@ -4,6 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t } from "@/i18n/getDictionary";
+import { getDirection } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp } from "lucide-react";
@@ -70,6 +74,9 @@ function WaveformVisualizer({ bars }: { bars: number[] }) {
 }
 
 export default function ChatPage() {
+  const { locale, dict } = useLocale();
+  const dir = getDirection(locale as Locale);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
@@ -152,9 +159,6 @@ export default function ChatPage() {
     setStreaming(true);
     setStreamingText("");
 
-    // Track whether the backend started responding — prevents double-submit fallback.
-    // Keep accumulated outside try so catch can safely show the partial streamed answer
-    // without re-sending the request and creating duplicate DB writes.
     let backendResponded = false;
     let accumulated = "";
 
@@ -186,10 +190,10 @@ export default function ChatPage() {
                 accumulated = parsed.text || parsed.content || accumulated;
                 setStreamingText(accumulated);
               } else {
-                const chunk = parsed.chunk || parsed.text || parsed.content || "";
-                if (chunk) {
-                  backendResponded = true;  // backend has started processing this request
-                  accumulated += chunk;
+                const chunkText = parsed.chunk || parsed.text || parsed.content || "";
+                if (chunkText) {
+                  backendResponded = true;
+                  accumulated += chunkText;
                   setStreamingText(accumulated);
                 }
               }
@@ -206,23 +210,19 @@ export default function ChatPage() {
 
       if (accumulated) setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
     } catch {
-      // Only fall back to /chat/message if the backend never started responding.
-      // If it did respond (backendResponded=true), the request was already processed —
-      // sending again would create duplicate DB records (goals, transactions, etc.).
       if (!backendResponded) {
         try {
           const res = await api.post("/chat/message", { content: userMsg });
-          setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || "پاسخی دریافت نشد" }]);
+          setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || t(dict, "chat.fallback") }]);
         } catch {
-          toast.error("خطا در ارسال پیام");
-          setMessages((prev) => [...prev, { role: "assistant", content: "متأسفم، مشکلی پیش آمده. دوباره تلاش کنید." }]);
+          toast.error(t(dict, "chat.errorSend"));
+          setMessages((prev) => [...prev, { role: "assistant", content: t(dict, "chat.retryMessage") }]);
         }
       } else {
-        // Backend processed the request but stream dropped — show whatever we accumulated
         if (accumulated) {
           setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
         } else {
-          toast.error("اتصال قطع شد. پیام پردازش شد اما پاسخ ناقص است.");
+          toast.error(t(dict, "chat.connectionDropped"));
         }
       }
     } finally {
@@ -294,7 +294,7 @@ export default function ChatPage() {
       setAudioBlob(null);
       timerRef.current = setInterval(() => setRecordingSecs((s) => s + 1), 1000);
     } catch {
-      toast.error("دسترسی به میکروفون رد شد");
+      toast.error(t(dict, "chat.micDenied"));
     }
   }
 
@@ -308,7 +308,7 @@ export default function ChatPage() {
       mediaRecorderRef.current.stop();
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((trk) => trk.stop());
       streamRef.current = null;
     }
     setRecording(false);
@@ -329,7 +329,7 @@ export default function ChatPage() {
       if (reply) setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       cancelVoice();
     } catch {
-      toast.error("خطا در ارسال صدا");
+      toast.error(t(dict, "chat.voiceError"));
     } finally {
       setSendingVoice(false);
     }
@@ -347,9 +347,9 @@ export default function ChatPage() {
     try {
       await api.delete("/chat/history");
       setMessages([]);
-      toast.success("تاریخچه پاک شد");
+      toast.success(t(dict, "chat.historyCleared"));
     } catch {
-      toast.error("خطا در پاک کردن تاریخچه");
+      toast.error(t(dict, "chat.historyClearError"));
     } finally {
       setClearingHistory(false);
     }
@@ -358,10 +358,16 @@ export default function ChatPage() {
   const firstName = user?.first_name || user?.name || "";
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  const recordingLabel = recording
+    ? t(dict, "chat.recording").replace("{time}", formatTime(recordingSecs))
+    : audioBlob
+      ? t(dict, "chat.recordStopped")
+      : t(dict, "chat.pressToRecord");
+
   // Loading state
   if (loading) {
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden" dir="rtl">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden" dir={dir}>
           <div className="shrink-0 h-[57px] border-b bg-white/80" />
           <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f5f1eb]/40">
             <div className="space-y-3">
@@ -390,7 +396,7 @@ export default function ChatPage() {
 
   // Normal chat layout (messages exist, or voice mode active)
   return (
-      <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)] " dir="rtl">
+      <div className="flex flex-col h-[calc(100dvh-4rem)] md:h-[calc(100dvh-2rem)]" dir={dir}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-white/80 backdrop-blur-sm shrink-0">
           <div className="flex items-center gap-2.5">
@@ -398,8 +404,8 @@ export default function ChatPage() {
               <Bot className="h-4.5 w-4.5 text-emerald-600" />
             </div>
             <div>
-              <p className="font-bold text-[#2d1812] text-sm">دستیار مالی</p>
-              <p className="text-[11px] text-gray-400">جیبیار · آنلاین</p>
+              <p className="font-bold text-[#2d1812] text-sm">{t(dict, "chat.assistantName")}</p>
+              <p className="text-[11px] text-gray-400">{t(dict, "chat.appNameOnline")}</p>
             </div>
           </div>
           <button
@@ -461,7 +467,7 @@ export default function ChatPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                        placeholder="از من بپرس..."
+                        placeholder={t(dict, "chat.inputPlaceholder")}
                         disabled={streaming}
                         className="w-full rounded-2xl bg-gray-100 border-0 px-4 py-3 text-sm text-[#2d1812] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 resize-none"
                     />
@@ -485,13 +491,7 @@ export default function ChatPage() {
                 >
                   <WaveformVisualizer bars={waveformBars} />
 
-                  <p className="text-center text-xs text-gray-500">
-                    {recording
-                        ? `در حال ضبط… ${formatTime(recordingSecs)}`
-                        : audioBlob
-                            ? "ضبط متوقف شد — ارسال یا لغو؟"
-                            : "روی دکمه بزن تا ضبط شروع شه"}
-                  </p>
+                  <p className="text-center text-xs text-gray-500">{recordingLabel}</p>
 
                   <div className="flex items-center justify-center gap-4">
                     <button

@@ -5,6 +5,10 @@ import { toast } from "sonner";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore, type User as AuthUser } from "@/store/auth";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t } from "@/i18n/getDictionary";
+import { SUPPORTED_LOCALES, LOCALE_META, SUPPORTED_CURRENCIES } from "@/i18n/config";
+import type { Locale, SupportedCurrency } from "@/i18n/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +17,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   CalendarDays,
   Coins,
+  Globe,
   Loader2,
   LogOut,
   MapPin,
@@ -21,36 +26,7 @@ import {
   Zap,
 } from "lucide-react";
 
-const CHAT_MODE_OPTIONS = [
-  { value: "normal", emoji: "😊", label: "عادی", desc: "صمیمی و کاربردی" },
-  { value: "roast", emoji: "🔥", label: "طعنه‌آمیز", desc: "تذکر با طنز سبک" },
-  { value: "hype", emoji: "🎉", label: "پرانرژی", desc: "تشویق و انرژی مثبت" },
-];
-
-const INCOME_OPTIONS = [
-  { value: "lt10", label: "کمتر از ۱۰ میلیون تومان" },
-  { value: "10to20", label: "۱۰ تا ۲۰ میلیون" },
-  { value: "20to40", label: "۲۰ تا ۴۰ میلیون" },
-  { value: "40to80", label: "۴۰ تا ۸۰ میلیون" },
-  { value: "gt80", label: "بیشتر از ۸۰ میلیون" },
-  { value: "prefer_not", label: "ترجیح می‌دم نگم" },
-];
-
 const JALALI_YEARS = Array.from({ length: 60 }, (_, i) => 1404 - i);
-const JALALI_MONTHS = [
-  "فروردین",
-  "اردیبهشت",
-  "خرداد",
-  "تیر",
-  "مرداد",
-  "شهریور",
-  "مهر",
-  "آبان",
-  "آذر",
-  "دی",
-  "بهمن",
-  "اسفند",
-];
 const JALALI_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 interface Wallet {
@@ -99,6 +75,7 @@ function splitBirthdate(birthdate?: string) {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, setUser, logout } = useAuthStore();
+  const { locale, dict } = useLocale();
 
   const initialProfile = useMemo(() => fillProfileFromUser(user), [user]);
   const initialBirth = useMemo(() => splitBirthdate(initialProfile.birthdate), [initialProfile.birthdate]);
@@ -117,10 +94,17 @@ export default function ProfilePage() {
   const [chatMode, setChatMode] = useState<string>(user?.chat_mode || "normal");
   const [savingMode, setSavingMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prefLanguage, setPrefLanguage] = useState<Locale>(locale as Locale);
+  const [prefCurrency, setPrefCurrency] = useState<SupportedCurrency>("IRT");
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   useEffect(() => {
     api.get("/billing/wallet").then((res) => setWallet(res.data)).catch(() => {});
     api.get("/iran/provinces").then((res) => setProvinces(res.data.provinces || [])).catch(() => {});
+    api.get("/users/me/preferences").then((res) => {
+      if (res.data.language) setPrefLanguage(res.data.language as Locale);
+      if (res.data.preferred_currency) setPrefCurrency(res.data.preferred_currency as SupportedCurrency);
+    }).catch(() => {});
     api
       .get("/users/me")
       .then((res) => {
@@ -164,7 +148,7 @@ export default function ProfilePage() {
 
   async function handleSaveProfile() {
     if (!name.trim() || !familyName.trim()) {
-      toast.error("نام و نام خانوادگی الزامی است");
+      toast.error(t(dict, "profile.nameRequired"));
       return;
     }
 
@@ -192,9 +176,9 @@ export default function ProfilePage() {
 
       const meRes = await api.get("/users/me");
       setUser(meRes.data);
-      toast.success("پروفایل بروزرسانی شد");
+      toast.success(t(dict, "profile.saveSuccess"));
     } catch {
-      toast.error("خطا در بروزرسانی پروفایل");
+      toast.error(t(dict, "profile.saveError"));
     } finally {
       setSaving(false);
     }
@@ -208,35 +192,60 @@ export default function ProfilePage() {
       await api.patch("/users/me", { chat_mode: mode });
       const meRes = await api.get("/users/me");
       setUser(meRes.data);
-      toast.success("حالت دستیار تغییر کرد");
+      toast.success(t(dict, "profile.chatModeSuccess"));
     } catch {
-      toast.error("خطا در تغییر حالت دستیار");
+      toast.error(t(dict, "profile.chatModeError"));
     } finally {
       setSavingMode(false);
+    }
+  }
+
+  async function handleSavePreferences() {
+    setSavingPrefs(true);
+    try {
+      await api.patch("/users/me/preferences", {
+        language: prefLanguage,
+        preferred_currency: prefCurrency,
+      });
+      toast.success(t(dict, "profile.preferencesSaved"));
+      if (prefLanguage !== locale) {
+        router.replace(`/${prefLanguage}/profile`);
+      }
+    } catch {
+      toast.error(t(dict, "profile.preferencesError"));
+    } finally {
+      setSavingPrefs(false);
     }
   }
 
   function handleLogout() {
     logout();
     router.replace("/login");
-    toast.success("با موفقیت خارج شدید");
+    toast.success(t(dict, "profile.logoutSuccess"));
   }
 
   const displayName = user?.first_name
     ? [user.first_name, user.last_name].filter(Boolean).join(" ")
-    : user?.name || "کاربر";
+    : user?.name || t(dict, "profile.userDefault");
 
   const fieldClass =
     "h-9 rounded-xl border-gray-200 bg-white px-3 text-sm focus-visible:ring-1 focus-visible:ring-primary/30";
   const selectClass =
     "h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 disabled:bg-muted disabled:text-muted-foreground";
 
+  const INCOME_RANGE_KEYS = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
+  const CHAT_MODE_KEYS = [
+    { value: "normal", emoji: "😊" },
+    { value: "roast", emoji: "🔥" },
+    { value: "hype", emoji: "🎉" },
+  ];
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-foreground">پروفایل</h1>
-          <p className="mt-1 text-xs text-muted-foreground">اطلاعات حساب، شارژ و تنظیمات پروفایل</p>
+          <h1 className="text-xl font-bold text-foreground">{t(dict, "profile.title")}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">{t(dict, "profile.subtitle")}</p>
         </div>
         <Avatar className="h-11 w-11 shrink-0">
           <AvatarFallback className="bg-primary text-white">
@@ -253,7 +262,7 @@ export default function ProfilePage() {
           </div>
           {wallet && (
             <div className="rounded-xl bg-primary/10 px-3 py-2 text-center">
-              <p className="text-[11px] text-muted-foreground">مانده توکن</p>
+              <p className="text-[11px] text-muted-foreground">{t(dict, "profile.tokenBalance")}</p>
               <p className="text-sm font-bold text-primary">{fmtNum(wallet.balance_tokens)}</p>
             </div>
           )}
@@ -264,22 +273,22 @@ export default function ProfilePage() {
         <CardHeader className="p-4 pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Coins className="h-4 w-4 text-primary" />
-            حساب و پرداخت
+            {t(dict, "profile.accountPayment")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           {wallet && (
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-xl bg-muted px-2 py-2">
-                <p className="text-[11px] text-muted-foreground">مصرف شده</p>
+                <p className="text-[11px] text-muted-foreground">{t(dict, "profile.consumed")}</p>
                 <p className="mt-0.5 text-xs font-bold">{fmtNum(wallet.total_consumed_tokens)}</p>
               </div>
               <div className="rounded-xl bg-muted px-2 py-2">
-                <p className="text-[11px] text-muted-foreground">هدیه</p>
+                <p className="text-[11px] text-muted-foreground">{t(dict, "profile.gifted")}</p>
                 <p className="mt-0.5 text-xs font-bold">{fmtNum(wallet.total_granted_tokens)}</p>
               </div>
               <div className="rounded-xl bg-muted px-2 py-2">
-                <p className="text-[11px] text-muted-foreground">خریداری شده</p>
+                <p className="text-[11px] text-muted-foreground">{t(dict, "profile.purchased")}</p>
                 <p className="mt-0.5 text-xs font-bold">{fmtNum(wallet.total_purchased_tokens)}</p>
               </div>
             </div>
@@ -287,19 +296,19 @@ export default function ProfilePage() {
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button asChild variant="outline" size="sm" className="h-9 justify-between px-3">
-              <Link href="/billing/tokens">
+              <Link href={`/${locale}/billing/tokens`}>
                 <span className="flex items-center gap-2">
                   <ShoppingCart className="h-4 w-4" />
-                  خرید توکن
+                  {t(dict, "profile.buyTokens")}
                 </span>
                 <span className="text-muted-foreground">←</span>
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="h-9 justify-between px-3">
-              <Link href="/billing/subscription">
+              <Link href={`/${locale}/billing/subscription`}>
                 <span className="flex items-center gap-2">
                   <Zap className="h-4 w-4" />
-                  شارژ / اشتراک
+                  {t(dict, "profile.charge")}
                 </span>
                 <span className="text-muted-foreground">←</span>
               </Link>
@@ -310,21 +319,21 @@ export default function ProfilePage() {
 
       <Card className="rounded-2xl">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-base">ویرایش اطلاعات</CardTitle>
+          <CardTitle className="text-base">{t(dict, "profile.editInfo")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 p-4 pt-0">
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">نام</Label>
-              <Input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="نام" />
+              <Label className="text-xs">{t(dict, "profile.firstName")}</Label>
+              <Input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} placeholder={t(dict, "profile.namePlaceholder")} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">نام خانوادگی</Label>
+              <Label className="text-xs">{t(dict, "profile.lastName")}</Label>
               <Input
                 className={fieldClass}
                 value={familyName}
                 onChange={(e) => setFamilyName(e.target.value)}
-                placeholder="نام خانوادگی"
+                placeholder={t(dict, "profile.familyNamePlaceholder")}
               />
             </div>
           </section>
@@ -332,19 +341,21 @@ export default function ProfilePage() {
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <CalendarDays className="h-3.5 w-3.5" />
-              تاریخ تولد
+              {t(dict, "profile.birthDate")}
             </div>
             <div className="grid grid-cols-3 gap-2">
               <select className={selectClass} value={birthDay} onChange={(e) => setBirthDay(e.target.value)}>
-                <option value="">روز</option>
+                <option value="">{t(dict, "profile.day")}</option>
                 {JALALI_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
               <select className={selectClass} value={birthMonth} onChange={(e) => setBirthMonth(e.target.value)}>
-                <option value="">ماه</option>
-                {JALALI_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                <option value="">{t(dict, "profile.month")}</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                  <option key={m} value={m}>{t(dict, `months.${m}`)}</option>
+                ))}
               </select>
               <select className={selectClass} value={birthYear} onChange={(e) => setBirthYear(e.target.value)}>
-                <option value="">سال</option>
+                <option value="">{t(dict, "profile.year")}</option>
                 {JALALI_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
@@ -353,11 +364,11 @@ export default function ProfilePage() {
           <section className="space-y-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <MapPin className="h-3.5 w-3.5" />
-              محل سکونت
+              {t(dict, "profile.residence")}
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <select className={selectClass} value={province} onChange={(e) => setProvince(e.target.value)}>
-                <option value="">انتخاب استان</option>
+                <option value="">{t(dict, "profile.selectProvince")}</option>
                 {provinces.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
               <select
@@ -366,7 +377,7 @@ export default function ProfilePage() {
                 onChange={(e) => setCity(e.target.value)}
                 disabled={!province || cities.length === 0}
               >
-                <option value="">انتخاب شهر</option>
+                <option value="">{t(dict, "profile.selectCity")}</option>
                 {cities.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -374,24 +385,24 @@ export default function ProfilePage() {
 
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold text-muted-foreground">میانگین درآمد ماهانه</p>
-              <span className="text-[11px] text-muted-foreground">اختیاری</span>
+              <p className="text-xs font-semibold text-muted-foreground">{t(dict, "profile.avgMonthlyIncome")}</p>
+              <span className="text-[11px] text-muted-foreground">{t(dict, "profile.optional")}</span>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {INCOME_OPTIONS.map((option) => {
-                const selected = incomeRange === option.value;
+              {INCOME_RANGE_KEYS.map((key) => {
+                const selected = incomeRange === key;
                 return (
                   <button
-                    key={option.value}
+                    key={key}
                     type="button"
-                    onClick={() => setIncomeRange(selected ? "" : option.value)}
+                    onClick={() => setIncomeRange(selected ? "" : key)}
                     className={`min-h-9 rounded-xl border px-2 py-1.5 text-right text-[11px] font-medium transition-colors ${
                       selected
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-gray-200 bg-white text-muted-foreground hover:border-primary/30 hover:text-foreground"
                     }`}
                   >
-                    {option.label}
+                    {t(dict, `incomeRanges.${key}`)}
                   </button>
                 );
               })}
@@ -400,18 +411,18 @@ export default function ProfilePage() {
 
           <Button className="h-10 w-full" onClick={handleSaveProfile} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            ذخیره تغییرات
+            {t(dict, "profile.saveChanges")}
           </Button>
         </CardContent>
       </Card>
 
       <Card className="rounded-2xl">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-base">حالت دستیار</CardTitle>
+          <CardTitle className="text-base">{t(dict, "profile.assistantMode")}</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <div className="grid grid-cols-3 gap-2">
-            {CHAT_MODE_OPTIONS.map((opt) => {
+            {CHAT_MODE_KEYS.map((opt) => {
               const selected = chatMode === opt.value;
               return (
                 <button
@@ -426,8 +437,10 @@ export default function ProfilePage() {
                   }`}
                 >
                   <span className="text-xl">{opt.emoji}</span>
-                  <span className="text-xs font-semibold">{opt.label}</span>
-                  <span className={`text-[10px] leading-tight ${selected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{opt.desc}</span>
+                  <span className="text-xs font-semibold">{t(dict, `chatModes.${opt.value}.label`)}</span>
+                  <span className={`text-[10px] leading-tight ${selected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                    {t(dict, `chatModes.${opt.value}.desc`)}
+                  </span>
                 </button>
               );
             })}
@@ -435,11 +448,76 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      {/* Language & Currency */}
+      <Card className="rounded-2xl">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Globe className="h-4 w-4 text-primary" />
+            {t(dict, "profile.languageSettings")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 p-4 pt-0">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">{t(dict, "profile.languageLabel")}</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {SUPPORTED_LOCALES.map((loc) => {
+                const meta = LOCALE_META[loc];
+                const selected = prefLanguage === loc;
+                return (
+                  <button
+                    key={loc}
+                    type="button"
+                    onClick={() => setPrefLanguage(loc)}
+                    className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-center transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-gray-200 bg-white text-muted-foreground hover:border-primary/30"
+                    }`}
+                  >
+                    <span className="text-lg">{meta.emoji}</span>
+                    <span className="text-[11px] font-medium">{meta.nativeName}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">{t(dict, "profile.currencyLabel")}</Label>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {SUPPORTED_CURRENCIES.map((cur) => {
+                const selected = prefCurrency === cur;
+                return (
+                  <button
+                    key={cur}
+                    type="button"
+                    onClick={() => setPrefCurrency(cur)}
+                    className={`rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-gray-200 bg-white text-muted-foreground hover:border-primary/30"
+                    }`}
+                  >
+                    {cur}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t(dict, "profile.currencyNote")}</p>
+          </div>
+
+          <Button className="h-10 w-full" onClick={handleSavePreferences} disabled={savingPrefs}>
+            {savingPrefs && <Loader2 className="h-4 w-4 animate-spin" />}
+            {t(dict, "profile.saveChanges")}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card className="rounded-2xl border-destructive/30">
         <CardContent className="p-4">
           <Button variant="destructive" className="h-10 w-full" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
-            خروج از حساب
+            {t(dict, "profile.logoutBtn")}
           </Button>
         </CardContent>
       </Card>
