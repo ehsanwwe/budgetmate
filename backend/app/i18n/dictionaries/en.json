@@ -1,0 +1,55 @@
+{
+  "common": {
+    "success": "Success",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "update": "Update",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "back": "Back",
+    "search": "Search"
+  },
+  "errors": {
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "not_found": "Not found",
+    "internal": "Internal server error",
+    "invalid_token": "Invalid token",
+    "invalid_otp": "Incorrect verification code",
+    "phone_required": "Phone number is required",
+    "message_required": "Message text is required"
+  },
+  "validation": {
+    "required": "This field is required",
+    "invalid_language": "Selected language is not supported",
+    "invalid_currency": "Selected currency is not supported"
+  },
+  "chat": {
+    "generic_safe_failure": "The AI assistant is currently unavailable. Please try again later.",
+    "invalid_request": "Invalid request",
+    "insufficient_tokens": "Insufficient token balance"
+  },
+  "goals": {
+    "created": "Goal created successfully.",
+    "already_exists": "This goal already exists."
+  },
+  "future_commitments": {
+    "created": "Future commitment created successfully."
+  },
+  "transactions": {
+    "created": "Transaction recorded successfully."
+  },
+  "budgets": {
+    "updated": "Budget updated successfully."
+  },
+  "profile": {
+    "preferences_updated": "Preferences saved successfully."
+  },
+  "admin": {
+    "translation_created": "Translation created successfully.",
+    "translation_updated": "Translation updated successfully.",
+    "translation_deleted": "Translation deleted."
+  }
+}

@@ -27,6 +27,7 @@ class User(Base):
     onboarding_completed_at = Column(DateTime, nullable=True)
     chat_mode = Column(String, default="normal")
     monthly_income = Column(BigInteger, nullable=True, default=None)
+    preferred_currency = Column(String, default="IRT")
 
     @property
     def display_name(self) -> str | None:

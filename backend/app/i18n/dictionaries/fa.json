@@ -1,0 +1,55 @@
+{
+  "common": {
+    "success": "موفق",
+    "error": "خطا",
+    "save": "ذخیره",
+    "cancel": "لغو",
+    "loading": "در حال بارگذاری...",
+    "update": "به‌روزرسانی",
+    "delete": "حذف",
+    "confirm": "تأیید",
+    "back": "برگشت",
+    "search": "جستجو"
+  },
+  "errors": {
+    "unauthorized": "دسترسی غیر مجاز",
+    "forbidden": "دسترسی ممنوع",
+    "not_found": "یافت نشد",
+    "internal": "خطای داخلی سرور",
+    "invalid_token": "توکن نامعتبر است",
+    "invalid_otp": "کد تأیید اشتباه است",
+    "phone_required": "شماره موبایل الزامی است",
+    "message_required": "متن پیام الزامی است"
+  },
+  "validation": {
+    "required": "این فیلد الزامی است",
+    "invalid_language": "زبان انتخابی پشتیبانی نمی‌شود",
+    "invalid_currency": "واحد پولی انتخابی پشتیبانی نمی‌شود"
+  },
+  "chat": {
+    "generic_safe_failure": "در حال حاضر دستیار هوشمند در دسترس نیست. لطفا بعدا تلاش کنید.",
+    "invalid_request": "درخواست نامعتبر است",
+    "insufficient_tokens": "موجودی توکن کافی نیست"
+  },
+  "goals": {
+    "created": "هدف با موفقیت ثبت شد.",
+    "already_exists": "این هدف قبلاً ثبت شده است."
+  },
+  "future_commitments": {
+    "created": "تعهد آینده با موفقیت ثبت شد."
+  },
+  "transactions": {
+    "created": "تراکنش با موفقیت ثبت شد."
+  },
+  "budgets": {
+    "updated": "بودجه با موفقیت به‌روزرسانی شد."
+  },
+  "profile": {
+    "preferences_updated": "تنظیمات با موفقیت ذخیره شد."
+  },
+  "admin": {
+    "translation_created": "ترجمه با موفقیت ایجاد شد.",
+    "translation_updated": "ترجمه با موفقیت به‌روزرسانی شد.",
+    "translation_deleted": "ترجمه حذف شد."
+  }
+}

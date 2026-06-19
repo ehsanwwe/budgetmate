@@ -1,0 +1,55 @@
+{
+  "common": {
+    "success": "成功",
+    "error": "错误",
+    "save": "保存",
+    "cancel": "取消",
+    "loading": "加载中...",
+    "update": "更新",
+    "delete": "删除",
+    "confirm": "确认",
+    "back": "返回",
+    "search": "搜索"
+  },
+  "errors": {
+    "unauthorized": "未授权",
+    "forbidden": "禁止访问",
+    "not_found": "未找到",
+    "internal": "内部服务器错误",
+    "invalid_token": "无效令牌",
+    "invalid_otp": "验证码不正确",
+    "phone_required": "手机号码为必填项",
+    "message_required": "消息文本为必填项"
+  },
+  "validation": {
+    "required": "此字段为必填项",
+    "invalid_language": "不支持所选语言",
+    "invalid_currency": "不支持所选货币"
+  },
+  "chat": {
+    "generic_safe_failure": "AI助手目前不可用。请稍后再试。",
+    "invalid_request": "无效请求",
+    "insufficient_tokens": "令牌余额不足"
+  },
+  "goals": {
+    "created": "目标创建成功。",
+    "already_exists": "该目标已存在。"
+  },
+  "future_commitments": {
+    "created": "未来承诺创建成功。"
+  },
+  "transactions": {
+    "created": "交易记录成功。"
+  },
+  "budgets": {
+    "updated": "预算更新成功。"
+  },
+  "profile": {
+    "preferences_updated": "偏好设置已成功保存。"
+  },
+  "admin": {
+    "translation_created": "翻译创建成功。",
+    "translation_updated": "翻译更新成功。",
+    "translation_deleted": "翻译已删除。"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "common": {
+    "success": "Erfolg",
+    "error": "Fehler",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "loading": "Laden...",
+    "update": "Aktualisieren",
+    "delete": "Löschen",
+    "confirm": "Bestätigen",
+    "back": "Zurück",
+    "search": "Suchen"
+  },
+  "errors": {
+    "unauthorized": "Nicht autorisiert",
+    "forbidden": "Verboten",
+    "not_found": "Nicht gefunden",
+    "internal": "Interner Serverfehler",
+    "invalid_token": "Ungültiges Token",
+    "invalid_otp": "Falscher Bestätigungscode",
+    "phone_required": "Telefonnummer ist erforderlich",
+    "message_required": "Nachrichtentext ist erforderlich"
+  },
+  "validation": {
+    "required": "Dieses Feld ist erforderlich",
+    "invalid_language": "Die ausgewählte Sprache wird nicht unterstützt",
+    "invalid_currency": "Die ausgewählte Währung wird nicht unterstützt"
+  },
+  "chat": {
+    "generic_safe_failure": "Der KI-Assistent ist derzeit nicht verfügbar. Bitte versuchen Sie es später.",
+    "invalid_request": "Ungültige Anfrage",
+    "insufficient_tokens": "Unzureichendes Token-Guthaben"
+  },
+  "goals": {
+    "created": "Ziel erfolgreich erstellt.",
+    "already_exists": "Dieses Ziel existiert bereits."
+  },
+  "future_commitments": {
+    "created": "Zukünftige Verpflichtung erfolgreich erstellt."
+  },
+  "transactions": {
+    "created": "Transaktion erfolgreich erfasst."
+  },
+  "budgets": {
+    "updated": "Budget erfolgreich aktualisiert."
+  },
+  "profile": {
+    "preferences_updated": "Einstellungen erfolgreich gespeichert."
+  },
+  "admin": {
+    "translation_created": "Übersetzung erfolgreich erstellt.",
+    "translation_updated": "Übersetzung erfolgreich aktualisiert.",
+    "translation_deleted": "Übersetzung gelöscht."
+  }
+}

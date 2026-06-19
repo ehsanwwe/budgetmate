@@ -1,6 +1,7 @@
 from datetime import date as DateType, datetime
 from typing import Optional
 from pydantic import BaseModel, field_validator
+from app.i18n.config import SUPPORTED_LOCALES, SUPPORTED_CURRENCIES
 
 VALID_INCOME_RANGES = {"lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"}
 VALID_CHAT_MODES = {"normal", "roast", "hype"}
@@ -25,6 +26,7 @@ class UserOut(BaseModel):
     onboarding_completed: bool = False
     onboarding_completed_at: Optional[datetime] = None
     chat_mode: str = "normal"
+    preferred_currency: str = "IRT"
 
     model_config = {"from_attributes": True}
 
@@ -34,12 +36,28 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     chat_mode: Optional[str] = None
+    language: Optional[str] = None
+    preferred_currency: Optional[str] = None
 
     @field_validator("chat_mode", mode="before")
     @classmethod
     def validate_chat_mode(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in VALID_CHAT_MODES:
             raise ValueError(f"chat_mode must be one of: {', '.join(VALID_CHAT_MODES)}")
+        return v
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in SUPPORTED_LOCALES:
+            raise ValueError(f"language must be one of: {', '.join(SUPPORTED_LOCALES)}")
+        return v
+
+    @field_validator("preferred_currency", mode="before")
+    @classmethod
+    def validate_currency(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in SUPPORTED_CURRENCIES:
+            raise ValueError(f"preferred_currency must be one of: {', '.join(SUPPORTED_CURRENCIES)}")
         return v
 
     @field_validator("first_name", "last_name", mode="before")
@@ -51,6 +69,32 @@ class UserUpdate(BaseModel):
         if stripped == "":
             raise ValueError("نمی‌تواند خالی باشد")
         return stripped
+
+
+class UserPreferencesUpdate(BaseModel):
+    language: Optional[str] = None
+    preferred_currency: Optional[str] = None
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def validate_language(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in SUPPORTED_LOCALES:
+            raise ValueError(f"language must be one of: {', '.join(SUPPORTED_LOCALES)}")
+        return v
+
+    @field_validator("preferred_currency", mode="before")
+    @classmethod
+    def validate_currency(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in SUPPORTED_CURRENCIES:
+            raise ValueError(f"preferred_currency must be one of: {', '.join(SUPPORTED_CURRENCIES)}")
+        return v
+
+
+class UserPreferencesRead(BaseModel):
+    language: str
+    preferred_currency: str
+
+    model_config = {"from_attributes": True}
 
 
 class ProfileUpdate(BaseModel):

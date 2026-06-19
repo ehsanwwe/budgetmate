@@ -143,6 +143,7 @@ class AgentPlanner:
         history: list[dict] | None = None,
         execution_results: list[dict] | None = None,
     ) -> AgentPlan:
+        language_instruction = finance_context.get("output_language_instruction", "")
         messages = [
             {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
             {"role": "system", "content": f"Safe DB World:\n{db_world}"},
@@ -152,6 +153,8 @@ class AgentPlanner:
                 "content": "Current local time context uses APP_TIMEZONE. Use the provided current_gregorian_date and date phrases in params; backend stores dates safely.",
             },
         ]
+        if language_instruction:
+            messages.append({"role": "system", "content": language_instruction})
 
         # History passed as a labeled system block — context only, must NOT re-execute
         if history:

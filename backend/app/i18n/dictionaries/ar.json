@@ -1,0 +1,55 @@
+{
+  "common": {
+    "success": "نجاح",
+    "error": "خطأ",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "loading": "جارٍ التحميل...",
+    "update": "تحديث",
+    "delete": "حذف",
+    "confirm": "تأكيد",
+    "back": "رجوع",
+    "search": "بحث"
+  },
+  "errors": {
+    "unauthorized": "غير مصرح",
+    "forbidden": "ممنوع",
+    "not_found": "غير موجود",
+    "internal": "خطأ داخلي في الخادم",
+    "invalid_token": "رمز غير صالح",
+    "invalid_otp": "رمز التحقق غير صحيح",
+    "phone_required": "رقم الهاتف مطلوب",
+    "message_required": "نص الرسالة مطلوب"
+  },
+  "validation": {
+    "required": "هذا الحقل مطلوب",
+    "invalid_language": "اللغة المختارة غير مدعومة",
+    "invalid_currency": "العملة المختارة غير مدعومة"
+  },
+  "chat": {
+    "generic_safe_failure": "المساعد الذكي غير متاح حالياً. يرجى المحاولة لاحقاً.",
+    "invalid_request": "طلب غير صالح",
+    "insufficient_tokens": "رصيد الرموز غير كافٍ"
+  },
+  "goals": {
+    "created": "تم إنشاء الهدف بنجاح.",
+    "already_exists": "هذا الهدف موجود بالفعل."
+  },
+  "future_commitments": {
+    "created": "تم إنشاء الالتزام المستقبلي بنجاح."
+  },
+  "transactions": {
+    "created": "تم تسجيل المعاملة بنجاح."
+  },
+  "budgets": {
+    "updated": "تم تحديث الميزانية بنجاح."
+  },
+  "profile": {
+    "preferences_updated": "تم حفظ التفضيلات بنجاح."
+  },
+  "admin": {
+    "translation_created": "تم إنشاء الترجمة بنجاح.",
+    "translation_updated": "تم تحديث الترجمة بنجاح.",
+    "translation_deleted": "تم حذف الترجمة."
+  }
+}
