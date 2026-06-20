@@ -87,28 +87,26 @@ Supported languages:
 
 ## Cleo AI Comparison Check
 
-BudgetMate is inspired by Cleo AI, but its design goals are different.
+BudgetMate is inspired by Cleo AI, but it is built for a different product direction: **self-hosted, bank-free, multilingual, RTL-ready, and controllable by the owner/admin**.
 
-| Area | BudgetMate | Cleo AI |
-|---|---|---|
-| Bank connection | Manual-first, no required bank connection | Built around connected personal finance features |
-| Privacy model | Local/self-hostable project | Hosted commercial app |
-| Cost model | Open-source MIT project | Commercial freemium/premium plans |
-| AI provider | Configurable: OpenAI or Ollama | Commercial app-managed AI |
-| Languages | Built for fa/ar/en/de/zh with RTL/LTR support | Public app/support language coverage should be verified per store/region |
-| Admin translation control | Built-in translation override panel | Not a self-hosted/admin-editable product |
+| Target requirement | BudgetMate | Cleo AI | Notes |
+|---|---:|---:|---|
+| Open-source project | ✅ | ❌ | BudgetMate can be reviewed, modified, and deployed by the owner. |
+| Self-hostable deployment | ✅ | ❌ | BudgetMate can run on your own infrastructure. |
+| No required bank connection | ✅ | ❌ | BudgetMate works with manual user-entered data by default. |
+| Local/private database control | ✅ | ❌ | BudgetMate keeps data under the project owner’s control. |
+| Configurable AI provider | ✅ | ❌ | BudgetMate supports OpenAI or local Ollama through `.env`. |
+| Local LLM option with Ollama | ✅ | ❌ | BudgetMate can run with `gpt-oss:20b` through Ollama. |
+| Persian-first experience | ✅ | ❌ | BudgetMate is designed around Persian financial UX from the start. |
+| RTL support for Persian/Arabic | ✅ | ❌ | BudgetMate supports RTL layout for `fa` and `ar`. |
+| Five built-in app locales | ✅ | ❌ | BudgetMate supports `fa`, `ar`, `en`, `de`, and `zh`. |
+| Admin-editable translations | ✅ | ❌ | BudgetMate includes admin dictionary override support. |
+| Goal and commitment separation | ✅ | ❌ | BudgetMate separates savings goals from required future payments. |
+| Custom Personal CFO orchestration | ✅ | ❌ | BudgetMate uses project-specific financial memory, goals, commitments, and advisor logic. |
 
 ### Why this matters
 
-BudgetMate should be evaluated against Cleo AI with clear criteria:
-
-- Is BudgetMate better for privacy-sensitive users?
-- Is it better for Persian/Arabic RTL users?
-- Is it better for teams that need self-hosting and admin-controlled dictionaries?
-- Is it cheaper to operate when using local Ollama models?
-- Does it support more relevant languages for the target users?
-
-The goal is not to clone Cleo. The goal is to build a controllable, multilingual, privacy-first financial assistant that can be adapted for local markets.
+Cleo is a strong commercial finance assistant, but BudgetMate targets a different use case: a controllable, privacy-first, multilingual Personal CFO that can be customized for local markets, self-hosted deployments, Persian/Arabic RTL users, and AI-provider flexibility.
 
 Useful Cleo references for comparison:
 
