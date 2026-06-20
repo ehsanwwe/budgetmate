@@ -36,7 +36,15 @@
     "required_field": "Required field",
     "per_page": "per page",
     "page": "Page",
-    "of": "of"
+    "of": "of",
+    "previous": "Previous",
+    "next": "Next",
+    "retry": "Retry",
+    "current": "Current",
+    "monthly": "Monthly",
+    "token": "Token",
+    "toman": "Toman",
+    "appName": "Jibiaar"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -62,7 +70,49 @@
     "verifyOtp": "Verify Code",
     "resend": "Resend",
     "blocked": "Your account has been blocked",
-    "welcome": "Welcome"
+    "welcome": "Welcome",
+    "landing": {
+      "title": "Welcome to Jibiaar",
+      "subtitle": "Manage your budget, get advice from a smart assistant and reach your financial goals.",
+      "secureLogin": "Secure login with one-time code",
+      "startButton": "Get Started",
+      "learnMore": "Learn More",
+      "aboutTitle": "About Jibiaar",
+      "aboutBody": "Jibiaar is a smart Persian financial assistant that helps you:",
+      "aboutPoints": [
+        "Manage your monthly budget",
+        "Categorize and track your expenses",
+        "Get financial advice from an AI assistant",
+        "Plan for your financial goals"
+      ],
+      "privacy": "Your data is stored only on your device. There is no connection to bank accounts."
+    },
+    "phonePage": {
+      "title": "Enter your phone number",
+      "subtitle": "We'll send you a verification code",
+      "placeholder": "912 345 6789",
+      "helper": "Number must be 10 digits and start with 9",
+      "submitButton": "Continue",
+      "sendError": "Failed to send code. Please try again"
+    },
+    "otpPage": {
+      "title": "Enter the code",
+      "subtitle": "Sent to",
+      "changePhone": "Send to a different number",
+      "helper": "Didn't get an SMS? Check spam or resend",
+      "resend": "Resend code",
+      "countdown": "Resend code ({seconds}s)",
+      "verifying": "Verifying...",
+      "verifyButton": "Verify",
+      "wrongCode": "The code you entered is wrong. Please try again",
+      "resendError": "Failed to resend code",
+      "testHint": "Test code: 123456"
+    },
+    "blockedPage": {
+      "title": "Account Blocked",
+      "description": "Your account has been blocked by an administrator. Contact support for more information.",
+      "backButton": "Back to login"
+    }
   },
   "onboarding": {
     "profile": "Complete Profile",
@@ -76,7 +126,104 @@
     "incomeRange": "Monthly Income Range",
     "continueBtn": "Continue",
     "agreeBtn": "I Agree",
-    "startBtn": "Get Started"
+    "startBtn": "Get Started",
+    "back": "Back",
+    "profilePage": {
+      "stepIndicator": "Step {current} of {total}",
+      "title": "Complete Profile",
+      "subtitle": "Only first and last name are required; the rest is used to personalize your financial experience.",
+      "sectionMain": "Main Info",
+      "sectionExtra": "Additional Info",
+      "sectionIncome": "Average Monthly Income",
+      "required": "Required",
+      "optional": "Optional",
+      "firstNameLabel": "First Name",
+      "firstNamePlaceholder": "e.g. Ali",
+      "lastNameLabel": "Last Name",
+      "lastNamePlaceholder": "e.g. Rezaei",
+      "birthdateLabel": "Date of Birth",
+      "dayPlaceholder": "Day",
+      "monthPlaceholder": "Month",
+      "yearPlaceholder": "Year",
+      "provinceLabel": "Province",
+      "selectProvince": "Select province",
+      "cityLabel": "City",
+      "selectCity": "Select city",
+      "nextButton": "Continue",
+      "errors": {
+        "nameRequired": "First and last name are required",
+        "saveFailed": "Failed to save data. Please try again"
+      }
+    },
+    "agreementPage": {
+      "title": "Terms & Conditions",
+      "subtitle": "Read this short text before getting started",
+      "updatedBadge": "Last updated: 2024/12/09 — version 1.0.0",
+      "rejectButton": "Decline",
+      "acceptButton": "Accept",
+      "acceptDisclaimer": "By clicking 'Accept' you confirm that you've read and agreed to the terms",
+      "sections": {
+        "intro": {
+          "title": "1. Service Introduction",
+          "body": "Jibiaar is a personal financial management application that helps users track and manage their monthly budgets, expenses, and financial goals. It also offers a Persian-language AI assistant for financial advice. By using this service, you accept the following terms and conditions."
+        },
+        "useTitle": "2. Terms of Use",
+        "age": {
+          "title": "2.1 Age",
+          "body": "Use of Jibiaar is permitted for those over 18. By registering, you confirm you are at least 18 years old. If a parent or guardian registers for a user under 18, the responsibility lies with the legal guardian."
+        },
+        "allowed": {
+          "title": "2.2 Allowed Use",
+          "body": "You commit to use this service only for lawful and personal purposes. Commercial use, transfer of data to third parties, unauthorized copying of content, or any attempt to gain unauthorized access to our systems is prohibited."
+        },
+        "privacyTitle": "3. Privacy and Data",
+        "collect": {
+          "title": "3.1 Data We Collect",
+          "intro": "Jibiaar has <strong>no connection to your bank accounts</strong>. All financial data (transactions, budgets, goals) is entered manually by you. We collect the following information:",
+          "items": [
+            "Phone number for authentication",
+            "Profile info (name, location, income range) you enter yourself",
+            "Transactions and budgets you record",
+            "Conversation messages with the AI assistant"
+          ]
+        },
+        "use": {
+          "title": "3.2 How We Use Data",
+          "body": "Your data is used to provide better service, personalize financial advice, and improve user experience. Your information is not sold or shared with any third party except where legally required."
+        },
+        "security": {
+          "title": "3.3 Data Security",
+          "body": "We use industry-standard encryption to protect your data. However, no system is 100% secure and we cannot guarantee absolute security."
+        },
+        "aiTitle": "4. AI Assistant",
+        "aiAdvice": {
+          "title": "4.1 Nature of Advice",
+          "body": "The Jibiaar AI assistant provides general information and educational suggestions. These suggestions are <strong>not professional financial advice</strong> and do not replace a licensed financial advisor. For important financial decisions, always consult a qualified expert."
+        },
+        "aiLimit": {
+          "title": "4.2 Limitation of Liability",
+          "body": "Jibiaar accepts no liability for any financial losses resulting from decisions made based on the AI assistant's suggestions."
+        },
+        "subscription": {
+          "title": "5. Subscription Services",
+          "body": "Some advanced AI assistant features require purchasing a subscription or tokens. Prices are clearly shown before purchase. All purchases are final, and refunds are only possible in special cases after review by the support team."
+        },
+        "changes": {
+          "title": "6. Changes to Terms",
+          "body": "We reserve the right to update these terms at any time. Important changes will be communicated via in-app notifications. Continued use of the service after changes are announced means acceptance of the new terms."
+        },
+        "contact": {
+          "title": "7. Contact Us",
+          "body": "If you have questions or concerns about these terms, you can reach us by email at {email} or via in-app support. Our team is ready to respond."
+        }
+      }
+    },
+    "welcomePage": {
+      "titleWithName": "Dear {name},\nyou're all set!",
+      "titleNoName": "You're all set!",
+      "subtitle": "Now you can chat with your smart assistant, manage your budget, and reach your financial goals.",
+      "startButton": "Let's go"
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -310,6 +457,28 @@
     "gt80": "More than 80M",
     "prefer_not": "Prefer not to say"
   },
+  "incomeRangesFull": {
+    "lt10": "Less than 10M Toman",
+    "10to20": "10M to 20M Toman",
+    "20to40": "20M to 40M Toman",
+    "40to80": "40M to 80M Toman",
+    "gt80": "More than 80M Toman",
+    "prefer_not": "Prefer not to say"
+  },
+  "jalaliMonths": {
+    "1": "Farvardin",
+    "2": "Ordibehesht",
+    "3": "Khordad",
+    "4": "Tir",
+    "5": "Mordad",
+    "6": "Shahrivar",
+    "7": "Mehr",
+    "8": "Aban",
+    "9": "Azar",
+    "10": "Dey",
+    "11": "Bahman",
+    "12": "Esfand"
+  },
   "months": {
     "1": "January", "2": "February", "3": "March",
     "4": "April", "5": "May", "6": "June",
@@ -344,7 +513,172 @@
     "addTranslation": "Add Translation",
     "editTranslation": "Edit Translation",
     "noOverride": "—",
-    "searchTranslations": "Search translations"
+    "searchTranslations": "Search translations",
+    "login": {
+      "title": "Admin Panel",
+      "subtitle": "Sign in to Jibiaar admin",
+      "usernameLabel": "Username",
+      "passwordLabel": "Password",
+      "submit": "Sign In",
+      "success": "Signed in",
+      "error": "Wrong username or password"
+    },
+    "layout": {
+      "panelLabel": "Admin Panel",
+      "navDashboard": "Dashboard",
+      "navUsers": "Users",
+      "logout": "Logout"
+    },
+    "dashboardPage": {
+      "title": "Admin Dashboard",
+      "loadError": "Failed to load data",
+      "stats": {
+        "totalUsers": "Total Users",
+        "activeUsers": "Active Users",
+        "blockedUsers": "Blocked Users",
+        "totalTransactions": "Transactions",
+        "totalGoals": "Goals"
+      },
+      "activityTitle": "Recent Activity",
+      "activityEmpty": "No activity recorded"
+    },
+    "usersPage": {
+      "title": "User Management",
+      "totalSuffix": "users",
+      "searchPlaceholder": "Search by phone or name...",
+      "loadError": "Failed to load users",
+      "empty": "No users found",
+      "table": {
+        "phone": "Phone",
+        "name": "Name",
+        "status": "Status",
+        "blocked": "Blocked",
+        "active": "Active"
+      },
+      "actions": {
+        "block": "Block",
+        "unblock": "Unblock",
+        "blocked": "User blocked",
+        "unblocked": "User unblocked",
+        "actionError": "Action failed"
+      },
+      "pagination": {
+        "previous": "Previous",
+        "next": "Next",
+        "pageOf": "{current} of {total}"
+      }
+    },
+    "userDetailPage": {
+      "title": "User Details",
+      "tabInfo": "User Info",
+      "tabChats": "Conversations",
+      "loadError": "Failed to load user info",
+      "notFound": "User not found",
+      "fields": {
+        "id": "ID",
+        "phone": "Phone Number",
+        "firstName": "First Name",
+        "lastName": "Last Name",
+        "birthdate": "Date of Birth",
+        "province": "Province",
+        "city": "City",
+        "incomeRange": "Income Range",
+        "onboardingStatus": "Onboarding Status",
+        "onboardingDone": "Completed",
+        "onboardingPending": "Incomplete",
+        "agreement": "Terms Accepted",
+        "agreementValue": "{date} — version {version}",
+        "agreementNone": "Not recorded",
+        "chatMode": "Assistant Mode",
+        "language": "Language",
+        "createdAt": "Registered At",
+        "statusLabel": "Status",
+        "statusBlocked": "Blocked",
+        "statusActive": "Active"
+      },
+      "actions": {
+        "block": "Block",
+        "unblock": "Unblock",
+        "delete": "Delete User",
+        "back": "Back",
+        "blocked": "User blocked",
+        "unblocked": "User unblocked",
+        "actionError": "Action failed"
+      }
+    },
+    "deleteDialog": {
+      "title": "Delete User",
+      "confirmIntro": "Are you sure you want to delete user \"{name}\"?",
+      "consequence": "This will delete all user data (transactions, budgets, goals, conversations, and logs) and cannot be",
+      "irreversible": "undone",
+      "phonePrompt": "To confirm, type the user's phone number exactly:",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleted": "User deleted",
+      "deleteError": "Failed to delete user"
+    },
+    "chatHistory": {
+      "userLabel": "User",
+      "assistantLabel": "Assistant",
+      "empty": "This user hasn't sent any messages yet.",
+      "loadError": "Failed to load conversations",
+      "prevPage": "Previous Page",
+      "nextPage": "Next Page",
+      "pageOf": "Page {current} of {total}"
+    },
+    "translationsPage": {
+      "title": "Translation Management",
+      "addButton": "+ Add",
+      "namespacePlaceholder": "namespace (e.g. common)",
+      "keyPlaceholder": "key (e.g. save)",
+      "valuePlaceholder": "value",
+      "saveButton": "Save",
+      "searchPlaceholder": "Search...",
+      "totalSuffix": "items",
+      "tableKey": "Key",
+      "tableValue": "Current Value",
+      "tableStatus": "Status",
+      "tableActions": "Actions",
+      "loadingRow": "Loading...",
+      "emptyRow": "No items found",
+      "active": "Active",
+      "inactive": "Inactive",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "toasts": {
+        "loadError": "Failed to load",
+        "saved": "Saved",
+        "saveError": "Failed to save",
+        "toggleError": "Error",
+        "created": "Created",
+        "createError": "Failed to create"
+      }
+    }
+  },
+  "billing": {
+    "tokens": {
+      "title": "Buy Tokens",
+      "currentBalance": "Current balance:",
+      "tokenLabel": "Token",
+      "tomanLabel": "Toman",
+      "buyButton": "Buy",
+      "purchasedButton": "Purchased",
+      "tokensSuffix": "tokens",
+      "trialNote": "Trial purchase — tokens are credited to your wallet instantly",
+      "buySuccess": "{count} tokens added to your wallet",
+      "buyError": "Purchase failed. Please try again"
+    },
+    "subscription": {
+      "title": "Buy Subscription",
+      "currentBalance": "Current balance:",
+      "monthlyTokens": "{count} tokens per month",
+      "perMonth": "{amount} Toman / month",
+      "activateButton": "Activate",
+      "activatedButton": "Activated",
+      "trialNote": "Trial subscription — monthly tokens are credited to your wallet instantly",
+      "buySuccess": "Subscription {title} activated, {count} tokens added",
+      "buyError": "Failed to activate subscription. Please try again"
+    }
   },
   "errors": {
     "unauthorized": "Unauthorized. Please log in.",
@@ -378,7 +712,8 @@
     "subheadline": "Your personal finance assistant",
     "loginBtn": "Login",
     "registerBtn": "Register",
-    "selectLanguage": "Select Language"
+    "selectLanguage": "Select Language",
+    "appName": "Jibiaar"
   },
   "chatEmpty": {
     "greeting": "Hello{name}!",

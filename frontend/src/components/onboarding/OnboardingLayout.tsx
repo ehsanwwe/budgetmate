@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
+import { useLocale } from "@/i18n/LocaleContext";
+import { isRTL } from "@/i18n/config";
 
 interface Props {
   children: ReactNode;
@@ -22,21 +24,25 @@ export default function OnboardingLayout({
   showBack = true,
 }: Props) {
   const router = useRouter();
-  const dir = back ? -1 : 1;
+  const { locale, dict } = useLocale();
+  const dir = isRTL(locale) ? "rtl" : "ltr";
+  const directionMultiplier = back ? -1 : 1;
 
   function handleBack() {
     if (backHref) router.push(backHref);
     else router.back();
   }
 
+  const backLabel = dict.onboarding.back ?? dict.common.back;
+
   return (
     <motion.div
-      initial={{ x: 50 * dir, opacity: 0 }}
+      initial={{ x: 50 * directionMultiplier, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -50 * dir, opacity: 0 }}
+      exit={{ x: -50 * directionMultiplier, opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="min-h-screen bg-[#f5f1eb] flex flex-col"
-      dir="rtl"
+      dir={dir}
     >
       {/* Top bar: back + progress dots */}
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
@@ -44,9 +50,9 @@ export default function OnboardingLayout({
           <button
             onClick={handleBack}
             className="flex items-center justify-center w-10 h-10 rounded-full bg-white/70 shadow-sm hover:bg-white transition-colors"
-            aria-label="بازگشت"
+            aria-label={backLabel}
           >
-            <ArrowRight className="w-5 h-5 text-[#2d1812]" />
+            <ArrowRight className={`w-5 h-5 text-[#2d1812] ${dir === "ltr" ? "rotate-180" : ""}`} />
           </button>
         ) : (
           <div className="w-10" />

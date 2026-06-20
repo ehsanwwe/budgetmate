@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { adminApi } from "@/lib/api";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t as tDict } from "@/i18n/getDictionary";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +23,8 @@ interface Props {
 }
 
 export default function DeleteUserDialog({ user, open, onOpenChange, onDeleted }: Props) {
+  const { dict } = useLocale();
+  const t = dict.admin.deleteDialog;
   const [phoneInput, setPhoneInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,32 +35,32 @@ export default function DeleteUserDialog({ user, open, onOpenChange, onDeleted }
     setLoading(true);
     try {
       await adminApi.delete(`/admin/users/${user.id}`);
-      toast.success("کاربر حذف شد");
+      toast.success(t.deleted);
       onOpenChange(false);
       onDeleted();
     } catch {
-      toast.error("حذف کاربر ناموفق بود");
+      toast.error(t.deleteError);
     } finally {
       setLoading(false);
     }
   }
 
+  const intro = tDict(dict, "admin.deleteDialog.confirmIntro", { name: user.name || user.phone });
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!loading) { setPhoneInput(""); onOpenChange(v); } }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" closeLabel={dict.common.close}>
         <DialogHeader>
-          <DialogTitle className="text-rose-600">حذف کاربر</DialogTitle>
+          <DialogTitle className="text-rose-600">{t.title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 text-sm text-slate-700 leading-relaxed">
+          <p>{intro}</p>
           <p>
-            آیا مطمئنی می‌خوای کاربر «<span className="font-bold">{user.name || user.phone}</span>» رو حذف کنی؟
-          </p>
-          <p>
-            این کار تمام داده‌های کاربر (تراکنش‌ها، بودجه، اهداف، گفت‌وگوها و لاگ‌ها) رو حذف می‌کنه و قابل بازگشت{" "}
-            <span className="font-bold text-rose-600">نیست</span>.
+            {t.consequence}{" "}
+            <span className="font-bold text-rose-600">{t.irreversible}</span>.
           </p>
           <div className="space-y-1.5">
-            <p className="text-slate-500">برای تأیید، شماره موبایل کاربر رو دقیق وارد کن:</p>
+            <p className="text-slate-500">{t.phonePrompt}</p>
             <Input
               dir="ltr"
               placeholder={user.phone}
@@ -73,14 +77,14 @@ export default function DeleteUserDialog({ user, open, onOpenChange, onDeleted }
             onClick={() => { setPhoneInput(""); onOpenChange(false); }}
             disabled={loading}
           >
-            انصراف
+            {t.cancel}
           </Button>
           <Button
             variant="destructive"
             onClick={handleDelete}
             disabled={!confirmed || loading}
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "حذف"}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t.delete}
           </Button>
         </DialogFooter>
       </DialogContent>

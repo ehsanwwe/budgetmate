@@ -1,6 +1,8 @@
 "use client";
 import { motion } from "framer-motion";
 import { ReactNode } from "react";
+import { useLocale } from "@/i18n/LocaleContext";
+import { isRTL } from "@/i18n/config";
 
 interface Props {
   imageUrl: string;
@@ -9,16 +11,18 @@ interface Props {
 }
 
 export default function BgImageScreen({ imageUrl, children, back = false }: Props) {
-  const dir = back ? -1 : 1;
+  const { locale } = useLocale();
+  const dir = isRTL(locale) ? "rtl" : "ltr";
+  const directionMultiplier = back ? -1 : 1;
 
   return (
     <motion.div
-      initial={{ x: 50 * dir, opacity: 0 }}
+      initial={{ x: 50 * directionMultiplier, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -50 * dir, opacity: 0 }}
+      exit={{ x: -50 * directionMultiplier, opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="min-h-screen flex flex-col relative overflow-hidden"
-      dir="rtl"
+      dir={dir}
     >
       {/* Background image — top 60% */}
       <div className="absolute inset-0">

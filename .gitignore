@@ -26,3 +26,4 @@ dist
 backend/.env
 frontend/.env
 backend/budgetmate.db
+frontend/src.zip

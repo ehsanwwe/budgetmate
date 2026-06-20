@@ -36,7 +36,15 @@
     "required_field": "Pflichtfeld",
     "per_page": "pro Seite",
     "page": "Seite",
-    "of": "von"
+    "of": "von",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "retry": "Erneut versuchen",
+    "current": "Aktuell",
+    "monthly": "Monatlich",
+    "token": "Token",
+    "toman": "Toman",
+    "appName": "Jibiaar"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -62,7 +70,49 @@
     "verifyOtp": "Code bestätigen",
     "resend": "Erneut senden",
     "blocked": "Ihr Konto wurde gesperrt",
-    "welcome": "Willkommen"
+    "welcome": "Willkommen",
+    "landing": {
+      "title": "Willkommen bei Jibiaar",
+      "subtitle": "Verwalten Sie Ihr Budget, holen Sie sich Rat von einem intelligenten Assistenten und erreichen Sie Ihre finanziellen Ziele.",
+      "secureLogin": "Sicheres Login mit Einmalcode",
+      "startButton": "Loslegen",
+      "learnMore": "Mehr erfahren",
+      "aboutTitle": "Über Jibiaar",
+      "aboutBody": "Jibiaar ist ein intelligenter persischsprachiger Finanzassistent, der Ihnen hilft:",
+      "aboutPoints": [
+        "Ihr monatliches Budget zu verwalten",
+        "Ihre Ausgaben zu kategorisieren und zu verfolgen",
+        "Finanzberatung von einer KI zu erhalten",
+        "Ihre finanziellen Ziele zu planen"
+      ],
+      "privacy": "Ihre Daten werden nur auf Ihrem Gerät gespeichert. Es besteht keine Verbindung zu Bankkonten."
+    },
+    "phonePage": {
+      "title": "Telefonnummer eingeben",
+      "subtitle": "Wir senden Ihnen einen Bestätigungscode",
+      "placeholder": "912 345 6789",
+      "helper": "Die Nummer muss 10 Ziffern haben und mit 9 beginnen",
+      "submitButton": "Weiter",
+      "sendError": "Code konnte nicht gesendet werden. Bitte erneut versuchen"
+    },
+    "otpPage": {
+      "title": "Code eingeben",
+      "subtitle": "Gesendet an",
+      "changePhone": "An andere Nummer senden",
+      "helper": "Keine SMS erhalten? Spam prüfen oder erneut senden",
+      "resend": "Code erneut senden",
+      "countdown": "Erneut senden ({seconds}s)",
+      "verifying": "Wird überprüft...",
+      "verifyButton": "Bestätigen",
+      "wrongCode": "Der eingegebene Code ist falsch. Bitte erneut versuchen",
+      "resendError": "Code konnte nicht erneut gesendet werden",
+      "testHint": "Testcode: 123456"
+    },
+    "blockedPage": {
+      "title": "Konto gesperrt",
+      "description": "Ihr Konto wurde von einem Administrator gesperrt. Kontaktieren Sie den Support für weitere Informationen.",
+      "backButton": "Zurück zum Login"
+    }
   },
   "onboarding": {
     "profile": "Profil vervollständigen",
@@ -76,7 +126,104 @@
     "incomeRange": "Monatliches Einkommensbereich",
     "continueBtn": "Weiter",
     "agreeBtn": "Ich stimme zu",
-    "startBtn": "Loslegen"
+    "startBtn": "Loslegen",
+    "back": "Zurück",
+    "profilePage": {
+      "stepIndicator": "Schritt {current} von {total}",
+      "title": "Profil vervollständigen",
+      "subtitle": "Nur Vor- und Nachname sind erforderlich; der Rest dient der Personalisierung Ihrer Finanzerfahrung.",
+      "sectionMain": "Hauptinformationen",
+      "sectionExtra": "Zusätzliche Informationen",
+      "sectionIncome": "Durchschnittliches Monatseinkommen",
+      "required": "Erforderlich",
+      "optional": "Optional",
+      "firstNameLabel": "Vorname",
+      "firstNamePlaceholder": "z.B. Ali",
+      "lastNameLabel": "Nachname",
+      "lastNamePlaceholder": "z.B. Rezaei",
+      "birthdateLabel": "Geburtsdatum",
+      "dayPlaceholder": "Tag",
+      "monthPlaceholder": "Monat",
+      "yearPlaceholder": "Jahr",
+      "provinceLabel": "Provinz",
+      "selectProvince": "Provinz wählen",
+      "cityLabel": "Stadt",
+      "selectCity": "Stadt wählen",
+      "nextButton": "Weiter",
+      "errors": {
+        "nameRequired": "Vor- und Nachname sind erforderlich",
+        "saveFailed": "Daten konnten nicht gespeichert werden. Bitte erneut versuchen"
+      }
+    },
+    "agreementPage": {
+      "title": "Geschäftsbedingungen",
+      "subtitle": "Lesen Sie diesen kurzen Text, bevor Sie beginnen",
+      "updatedBadge": "Letzte Aktualisierung: 2024/12/09 — Version 1.0.0",
+      "rejectButton": "Ablehnen",
+      "acceptButton": "Akzeptieren",
+      "acceptDisclaimer": "Mit Klick auf „Akzeptieren\" bestätigen Sie, die Bedingungen gelesen und akzeptiert zu haben",
+      "sections": {
+        "intro": {
+          "title": "1. Einführung",
+          "body": "Jibiaar ist eine persönliche Finanzverwaltungs-App, die Nutzern hilft, ihr monatliches Budget, Ausgaben und finanzielle Ziele zu verfolgen. Außerdem bietet sie einen persischsprachigen KI-Assistenten für Finanzberatung. Durch die Nutzung des Dienstes akzeptieren Sie die folgenden Bedingungen."
+        },
+        "useTitle": "2. Nutzungsbedingungen",
+        "age": {
+          "title": "2.1 Alter",
+          "body": "Die Nutzung von Jibiaar ist für Personen über 18 Jahren gestattet. Mit der Registrierung bestätigen Sie, mindestens 18 Jahre alt zu sein. Wenn ein Elternteil oder Vormund für einen Minderjährigen registriert, liegt die Verantwortung beim Erziehungsberechtigten."
+        },
+        "allowed": {
+          "title": "2.2 Erlaubte Nutzung",
+          "body": "Sie verpflichten sich, diesen Dienst nur für rechtmäßige und persönliche Zwecke zu nutzen. Kommerzielle Nutzung, Weitergabe von Daten an Dritte, unautorisiertes Kopieren oder Versuche unbefugten Zugriffs sind verboten."
+        },
+        "privacyTitle": "3. Datenschutz",
+        "collect": {
+          "title": "3.1 Erhobene Daten",
+          "intro": "Jibiaar hat <strong>keine Verbindung zu Ihren Bankkonten</strong>. Alle Finanzdaten (Transaktionen, Budgets, Ziele) werden manuell von Ihnen eingegeben. Wir erfassen folgende Informationen:",
+          "items": [
+            "Telefonnummer zur Authentifizierung",
+            "Profilinformationen (Name, Wohnort, Einkommensbereich), die Sie selbst eingeben",
+            "Transaktionen und Budgets, die Sie erfassen",
+            "Nachrichten mit dem KI-Assistenten"
+          ]
+        },
+        "use": {
+          "title": "3.2 Nutzung der Daten",
+          "body": "Ihre Daten werden zur Verbesserung des Dienstes, Personalisierung der Beratung und Optimierung der Nutzererfahrung verwendet. Ihre Informationen werden nicht verkauft oder an Dritte weitergegeben, außer wenn gesetzlich vorgeschrieben."
+        },
+        "security": {
+          "title": "3.3 Datensicherheit",
+          "body": "Wir verwenden Industriestandards zur Datenverschlüsselung. Dennoch ist kein System zu 100% sicher, und wir können absolute Sicherheit nicht garantieren."
+        },
+        "aiTitle": "4. KI-Assistent",
+        "aiAdvice": {
+          "title": "4.1 Art der Beratung",
+          "body": "Der KI-Assistent von Jibiaar liefert allgemeine Informationen und Bildungsvorschläge. Diese sind <strong>keine professionelle Finanzberatung</strong> und ersetzen keinen zugelassenen Finanzberater. Konsultieren Sie für wichtige Entscheidungen einen qualifizierten Experten."
+        },
+        "aiLimit": {
+          "title": "4.2 Haftungsbeschränkung",
+          "body": "Jibiaar übernimmt keine Haftung für finanzielle Verluste, die aus Entscheidungen aufgrund von Vorschlägen des KI-Assistenten entstehen."
+        },
+        "subscription": {
+          "title": "5. Abonnementdienste",
+          "body": "Einige erweiterte Funktionen erfordern ein Abonnement oder Tokens. Preise werden vor dem Kauf klar angezeigt. Alle Käufe sind endgültig; Rückerstattungen sind nur in besonderen Fällen nach Prüfung durch den Support möglich."
+        },
+        "changes": {
+          "title": "6. Änderungen der Bedingungen",
+          "body": "Wir behalten uns das Recht vor, diese Bedingungen jederzeit zu aktualisieren. Wichtige Änderungen werden über In-App-Benachrichtigungen mitgeteilt. Weitere Nutzung nach Bekanntgabe gilt als Zustimmung."
+        },
+        "contact": {
+          "title": "7. Kontakt",
+          "body": "Bei Fragen oder Bedenken erreichen Sie uns per E-Mail unter {email} oder über den In-App-Support. Unser Team ist bereit zu antworten."
+        }
+      }
+    },
+    "welcomePage": {
+      "titleWithName": "Lieber {name},\nfertig eingerichtet!",
+      "titleNoName": "Fertig eingerichtet!",
+      "subtitle": "Jetzt können Sie mit Ihrem intelligenten Assistenten chatten, Ihr Budget verwalten und Ihre Ziele erreichen.",
+      "startButton": "Los geht's"
+    }
   },
   "dashboard": {
     "title": "Dashboard",
@@ -310,6 +457,28 @@
     "gt80": "Mehr als 80M",
     "prefer_not": "Keine Angabe"
   },
+  "incomeRangesFull": {
+    "lt10": "Weniger als 10M Toman",
+    "10to20": "10M bis 20M Toman",
+    "20to40": "20M bis 40M Toman",
+    "40to80": "40M bis 80M Toman",
+    "gt80": "Mehr als 80M Toman",
+    "prefer_not": "Keine Angabe"
+  },
+  "jalaliMonths": {
+    "1": "Farvardin",
+    "2": "Ordibehesht",
+    "3": "Khordad",
+    "4": "Tir",
+    "5": "Mordad",
+    "6": "Shahrivar",
+    "7": "Mehr",
+    "8": "Aban",
+    "9": "Azar",
+    "10": "Dey",
+    "11": "Bahman",
+    "12": "Esfand"
+  },
   "months": {
     "1": "Januar", "2": "Februar", "3": "März",
     "4": "April", "5": "Mai", "6": "Juni",
@@ -344,7 +513,172 @@
     "addTranslation": "Übersetzung hinzufügen",
     "editTranslation": "Übersetzung bearbeiten",
     "noOverride": "—",
-    "searchTranslations": "Übersetzungen suchen"
+    "searchTranslations": "Übersetzungen suchen",
+    "login": {
+      "title": "Admin-Panel",
+      "subtitle": "Bei Jibiaar Admin anmelden",
+      "usernameLabel": "Benutzername",
+      "passwordLabel": "Passwort",
+      "submit": "Anmelden",
+      "success": "Erfolgreich angemeldet",
+      "error": "Benutzername oder Passwort falsch"
+    },
+    "layout": {
+      "panelLabel": "Admin-Panel",
+      "navDashboard": "Dashboard",
+      "navUsers": "Benutzer",
+      "logout": "Abmelden"
+    },
+    "dashboardPage": {
+      "title": "Admin-Dashboard",
+      "loadError": "Daten konnten nicht geladen werden",
+      "stats": {
+        "totalUsers": "Gesamtbenutzer",
+        "activeUsers": "Aktive Benutzer",
+        "blockedUsers": "Gesperrte Benutzer",
+        "totalTransactions": "Transaktionen",
+        "totalGoals": "Ziele"
+      },
+      "activityTitle": "Letzte Aktivitäten",
+      "activityEmpty": "Keine Aktivitäten erfasst"
+    },
+    "usersPage": {
+      "title": "Benutzerverwaltung",
+      "totalSuffix": "Benutzer",
+      "searchPlaceholder": "Suchen nach Telefon oder Name...",
+      "loadError": "Benutzer konnten nicht geladen werden",
+      "empty": "Keine Benutzer gefunden",
+      "table": {
+        "phone": "Telefon",
+        "name": "Name",
+        "status": "Status",
+        "blocked": "Gesperrt",
+        "active": "Aktiv"
+      },
+      "actions": {
+        "block": "Sperren",
+        "unblock": "Entsperren",
+        "blocked": "Benutzer gesperrt",
+        "unblocked": "Benutzer entsperrt",
+        "actionError": "Aktion fehlgeschlagen"
+      },
+      "pagination": {
+        "previous": "Zurück",
+        "next": "Weiter",
+        "pageOf": "{current} von {total}"
+      }
+    },
+    "userDetailPage": {
+      "title": "Benutzerinformationen",
+      "tabInfo": "Benutzerinfo",
+      "tabChats": "Gespräche",
+      "loadError": "Benutzerinfo konnte nicht geladen werden",
+      "notFound": "Benutzer nicht gefunden",
+      "fields": {
+        "id": "ID",
+        "phone": "Telefonnummer",
+        "firstName": "Vorname",
+        "lastName": "Nachname",
+        "birthdate": "Geburtsdatum",
+        "province": "Provinz",
+        "city": "Stadt",
+        "incomeRange": "Einkommensbereich",
+        "onboardingStatus": "Onboarding-Status",
+        "onboardingDone": "Abgeschlossen",
+        "onboardingPending": "Unvollständig",
+        "agreement": "AGB akzeptiert",
+        "agreementValue": "{date} — Version {version}",
+        "agreementNone": "Nicht erfasst",
+        "chatMode": "Assistentenmodus",
+        "language": "Sprache",
+        "createdAt": "Registriert am",
+        "statusLabel": "Status",
+        "statusBlocked": "Gesperrt",
+        "statusActive": "Aktiv"
+      },
+      "actions": {
+        "block": "Sperren",
+        "unblock": "Entsperren",
+        "delete": "Benutzer löschen",
+        "back": "Zurück",
+        "blocked": "Benutzer gesperrt",
+        "unblocked": "Benutzer entsperrt",
+        "actionError": "Aktion fehlgeschlagen"
+      }
+    },
+    "deleteDialog": {
+      "title": "Benutzer löschen",
+      "confirmIntro": "Möchten Sie den Benutzer „{name}\" wirklich löschen?",
+      "consequence": "Dies löscht alle Benutzerdaten (Transaktionen, Budgets, Ziele, Gespräche und Logs) und kann nicht",
+      "irreversible": "rückgängig gemacht werden",
+      "phonePrompt": "Zur Bestätigung Telefonnummer des Benutzers exakt eingeben:",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "deleted": "Benutzer gelöscht",
+      "deleteError": "Benutzer konnte nicht gelöscht werden"
+    },
+    "chatHistory": {
+      "userLabel": "Benutzer",
+      "assistantLabel": "Assistent",
+      "empty": "Dieser Benutzer hat noch keine Nachrichten gesendet.",
+      "loadError": "Gespräche konnten nicht geladen werden",
+      "prevPage": "Vorherige Seite",
+      "nextPage": "Nächste Seite",
+      "pageOf": "Seite {current} von {total}"
+    },
+    "translationsPage": {
+      "title": "Übersetzungsverwaltung",
+      "addButton": "+ Hinzufügen",
+      "namespacePlaceholder": "namespace (z.B. common)",
+      "keyPlaceholder": "key (z.B. save)",
+      "valuePlaceholder": "Wert",
+      "saveButton": "Speichern",
+      "searchPlaceholder": "Suchen...",
+      "totalSuffix": "Einträge",
+      "tableKey": "Schlüssel",
+      "tableValue": "Aktueller Wert",
+      "tableStatus": "Status",
+      "tableActions": "Aktionen",
+      "loadingRow": "Laden...",
+      "emptyRow": "Keine Einträge gefunden",
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "edit": "Bearbeiten",
+      "cancel": "Abbrechen",
+      "toasts": {
+        "loadError": "Laden fehlgeschlagen",
+        "saved": "Gespeichert",
+        "saveError": "Speichern fehlgeschlagen",
+        "toggleError": "Fehler",
+        "created": "Erstellt",
+        "createError": "Erstellen fehlgeschlagen"
+      }
+    }
+  },
+  "billing": {
+    "tokens": {
+      "title": "Tokens kaufen",
+      "currentBalance": "Aktueller Saldo:",
+      "tokenLabel": "Token",
+      "tomanLabel": "Toman",
+      "buyButton": "Kaufen",
+      "purchasedButton": "Gekauft",
+      "tokensSuffix": "Tokens",
+      "trialNote": "Testkauf — Tokens werden sofort gutgeschrieben",
+      "buySuccess": "{count} Tokens zu Ihrer Wallet hinzugefügt",
+      "buyError": "Kauf fehlgeschlagen. Bitte erneut versuchen"
+    },
+    "subscription": {
+      "title": "Abonnement kaufen",
+      "currentBalance": "Aktueller Saldo:",
+      "monthlyTokens": "{count} Tokens pro Monat",
+      "perMonth": "{amount} Toman / Monat",
+      "activateButton": "Aktivieren",
+      "activatedButton": "Aktiviert",
+      "trialNote": "Testabo — monatliche Tokens werden sofort gutgeschrieben",
+      "buySuccess": "Abo {title} aktiviert, {count} Tokens hinzugefügt",
+      "buyError": "Abo-Aktivierung fehlgeschlagen. Bitte erneut versuchen"
+    }
   },
   "errors": {
     "unauthorized": "Nicht autorisiert. Bitte melden Sie sich an.",
@@ -378,7 +712,8 @@
     "subheadline": "Ihr persönlicher Finanzassistent",
     "loginBtn": "Anmelden",
     "registerBtn": "Registrieren",
-    "selectLanguage": "Sprache auswählen"
+    "selectLanguage": "Sprache auswählen",
+    "appName": "Jibiaar"
   },
   "chatEmpty": {
     "greeting": "Hallo{name}!",

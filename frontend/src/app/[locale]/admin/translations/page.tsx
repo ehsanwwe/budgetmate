@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useLocale } from "@/i18n/LocaleContext";
 import { adminApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,8 @@ export default function AdminTranslationsPage() {
   const router = useRouter();
   const params = useParams();
   const locale = (params?.locale as string) || "fa";
+  const { dict } = useLocale();
+  const t = dict.admin.translationsPage;
 
   const [entries, setEntries] = useState<TranslationEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -50,54 +53,54 @@ export default function AdminTranslationsPage() {
       const r = await adminApi.get("/admin/translations", { params });
       setEntries(r.data.items);
       setTotal(r.data.total);
-    } catch { toast.error("خطا در بارگذاری"); }
+    } catch { toast.error(t.toasts.loadError); }
     finally { setLoading(false); }
   }
 
   async function handleSave(id: number) {
     try {
       await adminApi.patch(`/admin/translations/${id}`, { value: editValue });
-      toast.success("ذخیره شد");
+      toast.success(t.toasts.saved);
       setEditId(null);
       fetchEntries();
-    } catch { toast.error("خطا در ذخیره"); }
+    } catch { toast.error(t.toasts.saveError); }
   }
 
   async function handleToggle(entry: TranslationEntry) {
     try {
       await adminApi.patch(`/admin/translations/${entry.id}`, { is_active: !entry.is_active });
       fetchEntries();
-    } catch { toast.error("خطا"); }
+    } catch { toast.error(t.toasts.toggleError); }
   }
 
   async function handleCreate() {
     try {
       await adminApi.post("/admin/translations", newEntry);
-      toast.success("ایجاد شد");
+      toast.success(t.toasts.created);
       setShowAdd(false);
       setNewEntry({ namespace: "", key: "", locale: "fa", value: "" });
       fetchEntries();
-    } catch { toast.error("خطا در ایجاد"); }
+    } catch { toast.error(t.toasts.createError); }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">مدیریت ترجمه‌ها</h1>
-        <Button size="sm" onClick={() => setShowAdd(!showAdd)}>+ افزودن</Button>
+        <h1 className="text-2xl font-bold">{t.title}</h1>
+        <Button size="sm" onClick={() => setShowAdd(!showAdd)}>{t.addButton}</Button>
       </div>
 
       {showAdd && (
         <div className="border rounded-xl p-4 space-y-2 bg-white">
           <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="namespace (e.g. common)" value={newEntry.namespace} onChange={e => setNewEntry(p => ({ ...p, namespace: e.target.value }))} />
-            <Input placeholder="key (e.g. save)" value={newEntry.key} onChange={e => setNewEntry(p => ({ ...p, key: e.target.value }))} />
+            <Input placeholder={t.namespacePlaceholder} value={newEntry.namespace} onChange={e => setNewEntry(p => ({ ...p, namespace: e.target.value }))} />
+            <Input placeholder={t.keyPlaceholder} value={newEntry.key} onChange={e => setNewEntry(p => ({ ...p, key: e.target.value }))} />
             <select className="border rounded-lg px-3 py-2 text-sm" value={newEntry.locale} onChange={e => setNewEntry(p => ({ ...p, locale: e.target.value }))}>
               {LOCALES.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
-            <Input placeholder="value" value={newEntry.value} onChange={e => setNewEntry(p => ({ ...p, value: e.target.value }))} />
+            <Input placeholder={t.valuePlaceholder} value={newEntry.value} onChange={e => setNewEntry(p => ({ ...p, value: e.target.value }))} />
           </div>
-          <Button size="sm" onClick={handleCreate}>ذخیره</Button>
+          <Button size="sm" onClick={handleCreate}>{t.saveButton}</Button>
         </div>
       )}
 
@@ -105,26 +108,26 @@ export default function AdminTranslationsPage() {
         <select className="border rounded-lg px-3 py-2 text-sm" value={filterLocale} onChange={e => setFilterLocale(e.target.value)}>
           {LOCALES.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
-        <Input placeholder="جستجو..." className="max-w-xs" value={search} onChange={e => setSearch(e.target.value)} />
+        <Input placeholder={t.searchPlaceholder} className="max-w-xs" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      <div className="text-sm text-muted-foreground">{total} مورد</div>
+      <div className="text-sm text-muted-foreground">{total} {t.totalSuffix}</div>
 
       <div className="border rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr>
-              <th className="p-3 text-start">کلید</th>
-              <th className="p-3 text-start">مقدار جاری</th>
-              <th className="p-3 text-start">وضعیت</th>
-              <th className="p-3 text-start">عملیات</th>
+              <th className="p-3 text-start">{t.tableKey}</th>
+              <th className="p-3 text-start">{t.tableValue}</th>
+              <th className="p-3 text-start">{t.tableStatus}</th>
+              <th className="p-3 text-start">{t.tableActions}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">در حال بارگذاری...</td></tr>
+              <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">{t.loadingRow}</td></tr>
             ) : entries.length === 0 ? (
-              <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">موردی یافت نشد</td></tr>
+              <tr><td colSpan={4} className="p-6 text-center text-muted-foreground">{t.emptyRow}</td></tr>
             ) : entries.map(entry => (
               <tr key={entry.id} className="border-t hover:bg-muted/20">
                 <td className="p-3 font-mono text-xs">{entry.namespace}.{entry.key}</td>
@@ -137,17 +140,17 @@ export default function AdminTranslationsPage() {
                 </td>
                 <td className="p-3">
                   <Badge variant={entry.is_active ? "default" : "secondary"} className="cursor-pointer" onClick={() => handleToggle(entry)}>
-                    {entry.is_active ? "فعال" : "غیرفعال"}
+                    {entry.is_active ? t.active : t.inactive}
                   </Badge>
                 </td>
                 <td className="p-3">
                   {editId === entry.id ? (
                     <div className="flex gap-1">
-                      <Button size="sm" onClick={() => handleSave(entry.id)}>ذخیره</Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditId(null)}>لغو</Button>
+                      <Button size="sm" onClick={() => handleSave(entry.id)}>{t.saveButton}</Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditId(null)}>{t.cancel}</Button>
                     </div>
                   ) : (
-                    <Button size="sm" variant="outline" onClick={() => { setEditId(entry.id); setEditValue(entry.value); }}>ویرایش</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setEditId(entry.id); setEditValue(entry.value); }}>{t.edit}</Button>
                   )}
                 </td>
               </tr>

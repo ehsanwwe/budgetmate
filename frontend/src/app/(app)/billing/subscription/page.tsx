@@ -2,6 +2,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "@/lib/api";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t as tDict } from "@/i18n/getDictionary";
+import { formatNumber } from "@/i18n/formatters";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Zap, CheckCircle2, Loader2 } from "lucide-react";
@@ -18,11 +21,9 @@ interface Wallet {
   balance_tokens: number;
 }
 
-function fmtNum(n: number) {
-  return new Intl.NumberFormat("fa-IR").format(n);
-}
-
 export default function SubscriptionPage() {
+  const { locale, dict } = useLocale();
+  const t = dict.billing.subscription;
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
@@ -39,9 +40,14 @@ export default function SubscriptionPage() {
       const res = await api.post("/billing/purchase-subscription", { plan_id: planId });
       setWallet(res.data.wallet);
       setBought(planId);
-      toast.success(`اشتراک ${res.data.title} فعال شد و ${fmtNum(res.data.tokens_added)} توکن اضافه شد`);
+      toast.success(
+        tDict(dict, "billing.subscription.buySuccess", {
+          title: res.data.title,
+          count: formatNumber(res.data.tokens_added, locale),
+        })
+      );
     } catch {
-      toast.error("خطا در خرید اشتراک. دوباره تلاش کنید");
+      toast.error(t.buyError);
     } finally {
       setBuying(null);
     }
@@ -52,11 +58,11 @@ export default function SubscriptionPage() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Zap className="h-6 w-6 text-primary" />
-          خرید اشتراک
+          {t.title}
         </h1>
         {wallet && (
           <p className="text-sm text-muted-foreground mt-1">
-            موجودی فعلی: <span className="font-semibold text-primary">{fmtNum(wallet.balance_tokens)}</span> توکن
+            {t.currentBalance} <span className="font-semibold text-primary">{formatNumber(wallet.balance_tokens, locale)}</span> {dict.common.token}
           </p>
         )}
       </div>
@@ -69,7 +75,9 @@ export default function SubscriptionPage() {
                 {plan.title}
                 {bought === plan.plan_id && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
               </CardTitle>
-              <CardDescription>{fmtNum(plan.monthly_token_quota)} توکن ماهانه</CardDescription>
+              <CardDescription>
+                {tDict(dict, "billing.subscription.monthlyTokens", { count: formatNumber(plan.monthly_token_quota, locale) })}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <ul className="space-y-1">
@@ -81,7 +89,9 @@ export default function SubscriptionPage() {
                 ))}
               </ul>
               <div className="flex items-center justify-between pt-1">
-                <span className="text-lg font-bold">{fmtNum(plan.amount_toman)} تومان / ماه</span>
+                <span className="text-lg font-bold">
+                  {tDict(dict, "billing.subscription.perMonth", { amount: formatNumber(plan.amount_toman, locale) })}
+                </span>
                 <Button
                   onClick={() => handlePurchase(plan.plan_id)}
                   disabled={buying === plan.plan_id}
@@ -89,7 +99,7 @@ export default function SubscriptionPage() {
                   variant={bought === plan.plan_id ? "outline" : "default"}
                 >
                   {buying === plan.plan_id && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {bought === plan.plan_id ? "فعال شد" : "فعال‌سازی"}
+                  {bought === plan.plan_id ? t.activatedButton : t.activateButton}
                 </Button>
               </div>
             </CardContent>
@@ -98,7 +108,7 @@ export default function SubscriptionPage() {
       </div>
 
       <p className="text-xs text-muted-foreground text-center">
-        اشتراک آزمایشی — توکن‌های ماهانه فوری به کیف پول اضافه می‌شوند
+        {t.trialNote}
       </p>
     </div>
   );

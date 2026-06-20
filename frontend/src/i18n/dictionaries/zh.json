@@ -36,7 +36,15 @@
     "required_field": "必填字段",
     "per_page": "每页",
     "page": "页",
-    "of": "共"
+    "of": "共",
+    "previous": "上一页",
+    "next": "下一页",
+    "retry": "重试",
+    "current": "当前",
+    "monthly": "每月",
+    "token": "令牌",
+    "toman": "Toman",
+    "appName": "Jibiaar"
   },
   "nav": {
     "dashboard": "仪表板",
@@ -62,7 +70,49 @@
     "verifyOtp": "验证",
     "resend": "重新发送",
     "blocked": "您的账户已被封禁",
-    "welcome": "欢迎"
+    "welcome": "欢迎",
+    "landing": {
+      "title": "欢迎使用 Jibiaar",
+      "subtitle": "管理您的预算，从智能助手获取建议，实现您的财务目标。",
+      "secureLogin": "使用一次性验证码安全登录",
+      "startButton": "开始",
+      "learnMore": "了解更多",
+      "aboutTitle": "关于 Jibiaar",
+      "aboutBody": "Jibiaar 是一款智能波斯语财务助手，帮助您：",
+      "aboutPoints": [
+        "管理您的月度预算",
+        "对支出进行分类和追踪",
+        "从 AI 助手获取财务建议",
+        "为您的财务目标制定计划"
+      ],
+      "privacy": "您的数据仅存储在您的设备上，不与任何银行账户相连。"
+    },
+    "phonePage": {
+      "title": "请输入手机号",
+      "subtitle": "我们将向您发送验证码",
+      "placeholder": "912 345 6789",
+      "helper": "号码必须为 10 位且以 9 开头",
+      "submitButton": "继续",
+      "sendError": "发送验证码失败。请重试"
+    },
+    "otpPage": {
+      "title": "输入验证码",
+      "subtitle": "已发送至",
+      "changePhone": "发送至其他号码",
+      "helper": "未收到短信？请检查垃圾邮件或重新发送",
+      "resend": "重新发送验证码",
+      "countdown": "重新发送 ({seconds}秒)",
+      "verifying": "验证中...",
+      "verifyButton": "验证",
+      "wrongCode": "输入的验证码错误。请重试",
+      "resendError": "重新发送失败",
+      "testHint": "测试码: 123456"
+    },
+    "blockedPage": {
+      "title": "账户已封禁",
+      "description": "您的账户已被管理员封禁。请联系支持获取更多信息。",
+      "backButton": "返回登录"
+    }
   },
   "onboarding": {
     "profile": "完善个人资料",
@@ -76,7 +126,104 @@
     "incomeRange": "月收入范围",
     "continueBtn": "继续",
     "agreeBtn": "我同意",
-    "startBtn": "开始"
+    "startBtn": "开始",
+    "back": "返回",
+    "profilePage": {
+      "stepIndicator": "第 {current} 步 / 共 {total} 步",
+      "title": "完善个人资料",
+      "subtitle": "仅姓名为必填项；其他信息用于个性化您的财务体验。",
+      "sectionMain": "基本信息",
+      "sectionExtra": "附加信息",
+      "sectionIncome": "平均月收入",
+      "required": "必填",
+      "optional": "可选",
+      "firstNameLabel": "名",
+      "firstNamePlaceholder": "例如：阿里",
+      "lastNameLabel": "姓",
+      "lastNamePlaceholder": "例如：礼萨伊",
+      "birthdateLabel": "出生日期",
+      "dayPlaceholder": "日",
+      "monthPlaceholder": "月",
+      "yearPlaceholder": "年",
+      "provinceLabel": "省份",
+      "selectProvince": "选择省份",
+      "cityLabel": "城市",
+      "selectCity": "选择城市",
+      "nextButton": "继续",
+      "errors": {
+        "nameRequired": "姓名为必填项",
+        "saveFailed": "保存数据失败，请重试"
+      }
+    },
+    "agreementPage": {
+      "title": "条款与条件",
+      "subtitle": "开始前请先阅读这段简短说明",
+      "updatedBadge": "最后更新：2024/12/09 — 版本 1.0.0",
+      "rejectButton": "拒绝",
+      "acceptButton": "接受",
+      "acceptDisclaimer": "点击「接受」即表示您已阅读并同意条款",
+      "sections": {
+        "intro": {
+          "title": "1. 服务介绍",
+          "body": "Jibiaar 是一款个人财务管理应用，帮助用户追踪和管理月度预算、支出与财务目标。它还提供波斯语 AI 助手以提供财务建议。使用本服务即表示您接受以下条款。"
+        },
+        "useTitle": "2. 使用条款",
+        "age": {
+          "title": "2.1 年龄",
+          "body": "使用 Jibiaar 须年满 18 周岁。注册即代表您确认年满 18 岁。若父母或监护人为未满 18 岁的用户注册，责任由法定监护人承担。"
+        },
+        "allowed": {
+          "title": "2.2 允许的使用",
+          "body": "您承诺仅将本服务用于合法且个人用途。禁止商业用途、向第三方传输数据、未经授权复制内容或任何试图未授权访问我们系统的行为。"
+        },
+        "privacyTitle": "3. 隐私与数据",
+        "collect": {
+          "title": "3.1 我们收集的数据",
+          "intro": "Jibiaar <strong>不与您的银行账户连接</strong>。所有财务数据（交易、预算、目标）均由您手动输入。我们收集以下信息：",
+          "items": [
+            "用于身份验证的手机号",
+            "您自行填写的个人资料（姓名、所在地、收入范围）",
+            "您记录的交易和预算",
+            "与 AI 助手的对话信息"
+          ]
+        },
+        "use": {
+          "title": "3.2 数据使用方式",
+          "body": "您的数据用于提供更好的服务、个性化财务建议和改善用户体验。除非法律要求，您的信息不会被出售或共享给任何第三方。"
+        },
+        "security": {
+          "title": "3.3 数据安全",
+          "body": "我们使用行业标准加密保护您的数据。但没有系统是 100% 安全的，我们无法保证绝对安全。"
+        },
+        "aiTitle": "4. AI 助手",
+        "aiAdvice": {
+          "title": "4.1 建议性质",
+          "body": "Jibiaar AI 助手提供一般信息和教育建议。这些建议<strong>不属于专业财务建议</strong>，不能替代持牌财务顾问。重要的财务决策请咨询合格专家。"
+        },
+        "aiLimit": {
+          "title": "4.2 责任限制",
+          "body": "Jibiaar 不对基于 AI 助手建议作出的决定所产生的任何财务损失承担责任。"
+        },
+        "subscription": {
+          "title": "5. 订阅服务",
+          "body": "部分 AI 助手高级功能需要购买订阅或令牌。价格在购买前清晰显示。所有购买均为最终交易，仅在特殊情况下经支持团队审核后可退款。"
+        },
+        "changes": {
+          "title": "6. 条款变更",
+          "body": "我们保留随时更新这些条款的权利。重要变更将通过应用内通知告知您。在变更公布后继续使用服务即视为接受新条款。"
+        },
+        "contact": {
+          "title": "7. 联系我们",
+          "body": "如对这些条款有疑问，您可以通过邮件 {email} 或应用内支持联系我们。我们的团队随时准备回复。"
+        }
+      }
+    },
+    "welcomePage": {
+      "titleWithName": "亲爱的 {name}，\n注册完成！",
+      "titleNoName": "注册完成！",
+      "subtitle": "现在您可以与智能助手聊天、管理您的预算并实现财务目标。",
+      "startButton": "开始吧"
+    }
   },
   "dashboard": {
     "title": "仪表板",
@@ -310,6 +457,28 @@
     "gt80": "超过8000万",
     "prefer_not": "不透露"
   },
+  "incomeRangesFull": {
+    "lt10": "低于1000万Toman",
+    "10to20": "1000万至2000万Toman",
+    "20to40": "2000万至4000万Toman",
+    "40to80": "4000万至8000万Toman",
+    "gt80": "超过8000万Toman",
+    "prefer_not": "不透露"
+  },
+  "jalaliMonths": {
+    "1": "法尔瓦丁",
+    "2": "奥迪比赫什特",
+    "3": "霍尔达德",
+    "4": "提尔",
+    "5": "莫尔达德",
+    "6": "沙赫里瓦尔",
+    "7": "梅赫尔",
+    "8": "阿班",
+    "9": "阿扎尔",
+    "10": "戴",
+    "11": "巴赫曼",
+    "12": "埃斯凡德"
+  },
   "months": {
     "1": "一月", "2": "二月", "3": "三月",
     "4": "四月", "5": "五月", "6": "六月",
@@ -344,7 +513,172 @@
     "addTranslation": "添加翻译",
     "editTranslation": "编辑翻译",
     "noOverride": "—",
-    "searchTranslations": "搜索翻译"
+    "searchTranslations": "搜索翻译",
+    "login": {
+      "title": "管理面板",
+      "subtitle": "登录 Jibiaar 管理",
+      "usernameLabel": "用户名",
+      "passwordLabel": "密码",
+      "submit": "登录",
+      "success": "登录成功",
+      "error": "用户名或密码错误"
+    },
+    "layout": {
+      "panelLabel": "管理面板",
+      "navDashboard": "仪表板",
+      "navUsers": "用户",
+      "logout": "退出"
+    },
+    "dashboardPage": {
+      "title": "管理仪表板",
+      "loadError": "数据加载失败",
+      "stats": {
+        "totalUsers": "总用户数",
+        "activeUsers": "活跃用户",
+        "blockedUsers": "已封禁用户",
+        "totalTransactions": "交易数",
+        "totalGoals": "目标数"
+      },
+      "activityTitle": "最近活动",
+      "activityEmpty": "暂无活动记录"
+    },
+    "usersPage": {
+      "title": "用户管理",
+      "totalSuffix": "用户",
+      "searchPlaceholder": "按手机号或姓名搜索...",
+      "loadError": "用户加载失败",
+      "empty": "未找到用户",
+      "table": {
+        "phone": "手机号",
+        "name": "姓名",
+        "status": "状态",
+        "blocked": "已封禁",
+        "active": "活跃"
+      },
+      "actions": {
+        "block": "封禁",
+        "unblock": "解封",
+        "blocked": "用户已封禁",
+        "unblocked": "用户已解封",
+        "actionError": "操作失败"
+      },
+      "pagination": {
+        "previous": "上一页",
+        "next": "下一页",
+        "pageOf": "{current} / {total}"
+      }
+    },
+    "userDetailPage": {
+      "title": "用户信息",
+      "tabInfo": "用户信息",
+      "tabChats": "对话",
+      "loadError": "用户信息加载失败",
+      "notFound": "未找到用户",
+      "fields": {
+        "id": "ID",
+        "phone": "手机号",
+        "firstName": "名",
+        "lastName": "姓",
+        "birthdate": "出生日期",
+        "province": "省份",
+        "city": "城市",
+        "incomeRange": "收入范围",
+        "onboardingStatus": "引导状态",
+        "onboardingDone": "已完成",
+        "onboardingPending": "未完成",
+        "agreement": "条款同意",
+        "agreementValue": "{date} — 版本 {version}",
+        "agreementNone": "未记录",
+        "chatMode": "助手模式",
+        "language": "语言",
+        "createdAt": "注册时间",
+        "statusLabel": "状态",
+        "statusBlocked": "已封禁",
+        "statusActive": "活跃"
+      },
+      "actions": {
+        "block": "封禁",
+        "unblock": "解封",
+        "delete": "删除用户",
+        "back": "返回",
+        "blocked": "用户已封禁",
+        "unblocked": "用户已解封",
+        "actionError": "操作失败"
+      }
+    },
+    "deleteDialog": {
+      "title": "删除用户",
+      "confirmIntro": "确定要删除用户「{name}」吗？",
+      "consequence": "这将删除该用户的所有数据（交易、预算、目标、对话和日志），并且",
+      "irreversible": "无法恢复",
+      "phonePrompt": "为确认，请准确输入用户的手机号：",
+      "cancel": "取消",
+      "delete": "删除",
+      "deleted": "用户已删除",
+      "deleteError": "删除用户失败"
+    },
+    "chatHistory": {
+      "userLabel": "用户",
+      "assistantLabel": "助手",
+      "empty": "该用户尚未发送任何消息。",
+      "loadError": "对话加载失败",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "第 {current} / {total} 页"
+    },
+    "translationsPage": {
+      "title": "翻译管理",
+      "addButton": "+ 添加",
+      "namespacePlaceholder": "namespace (例如 common)",
+      "keyPlaceholder": "key (例如 save)",
+      "valuePlaceholder": "值",
+      "saveButton": "保存",
+      "searchPlaceholder": "搜索...",
+      "totalSuffix": "项",
+      "tableKey": "键",
+      "tableValue": "当前值",
+      "tableStatus": "状态",
+      "tableActions": "操作",
+      "loadingRow": "加载中...",
+      "emptyRow": "未找到项目",
+      "active": "活跃",
+      "inactive": "未启用",
+      "edit": "编辑",
+      "cancel": "取消",
+      "toasts": {
+        "loadError": "加载失败",
+        "saved": "已保存",
+        "saveError": "保存失败",
+        "toggleError": "错误",
+        "created": "已创建",
+        "createError": "创建失败"
+      }
+    }
+  },
+  "billing": {
+    "tokens": {
+      "title": "购买令牌",
+      "currentBalance": "当前余额：",
+      "tokenLabel": "令牌",
+      "tomanLabel": "Toman",
+      "buyButton": "购买",
+      "purchasedButton": "已购买",
+      "tokensSuffix": "令牌",
+      "trialNote": "试用购买 — 令牌将立即添加到您的钱包",
+      "buySuccess": "{count} 个令牌已添加到您的钱包",
+      "buyError": "购买失败。请重试"
+    },
+    "subscription": {
+      "title": "购买订阅",
+      "currentBalance": "当前余额：",
+      "monthlyTokens": "每月 {count} 个令牌",
+      "perMonth": "{amount} Toman / 月",
+      "activateButton": "激活",
+      "activatedButton": "已激活",
+      "trialNote": "试用订阅 — 每月令牌将立即添加到您的钱包",
+      "buySuccess": "{title} 订阅已激活，已添加 {count} 个令牌",
+      "buyError": "激活订阅失败。请重试"
+    }
   },
   "errors": {
     "unauthorized": "未授权。请登录。",
@@ -378,7 +712,8 @@
     "subheadline": "您的个人财务助手",
     "loginBtn": "登录",
     "registerBtn": "注册",
-    "selectLanguage": "选择语言"
+    "selectLanguage": "选择语言",
+    "appName": "Jibiaar"
   },
   "chatEmpty": {
     "greeting": "您好{name}！",

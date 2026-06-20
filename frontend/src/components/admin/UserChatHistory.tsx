@@ -3,6 +3,8 @@ import { useEffect, useState, useCallback } from "react";
 import { adminApi } from "@/lib/api";
 import { toast } from "sonner";
 import { jDate, toFa } from "@/lib/fmt";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t as tDict } from "@/i18n/getDictionary";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -21,6 +23,8 @@ interface ChatHistoryResp {
 }
 
 export default function UserChatHistory({ userId }: { userId: string | number }) {
+  const { dict } = useLocale();
+  const t = dict.admin.chatHistory;
   const [data, setData] = useState<ChatHistoryResp | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -33,11 +37,11 @@ export default function UserChatHistory({ userId }: { userId: string | number })
       );
       setData(res.data);
     } catch {
-      toast.error("خطا در بارگذاری گفت‌وگوها");
+      toast.error(t.loadError);
     } finally {
       setLoading(false);
     }
-  }, [userId, page]);
+  }, [userId, page, t.loadError]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -62,7 +66,7 @@ export default function UserChatHistory({ userId }: { userId: string | number })
   if (!data || data.items.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 text-slate-500">
-        این کاربر هنوز پیامی نفرستاده است.
+        {t.empty}
       </div>
     );
   }
@@ -75,7 +79,7 @@ export default function UserChatHistory({ userId }: { userId: string | number })
           return (
             <div key={msg.id} className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
               <span className="text-xs text-slate-500 px-1">
-                {isUser ? "کاربر" : "دستیار"} · {jDate(msg.created_at)}
+                {isUser ? t.userLabel : t.assistantLabel} · {jDate(msg.created_at)}
               </span>
               <div
                 className={`max-w-[70%] rounded-2xl px-4 py-2.5 whitespace-pre-wrap text-sm ${
@@ -99,10 +103,10 @@ export default function UserChatHistory({ userId }: { userId: string | number })
             disabled={page >= totalPages}
             onClick={() => setPage((p) => p + 1)}
           >
-            صفحه قبل
+            {t.prevPage}
           </Button>
           <span className="text-sm text-slate-600">
-            صفحه {toFa(page)} از {toFa(totalPages)}
+            {tDict(dict, "admin.chatHistory.pageOf", { current: toFa(page), total: toFa(totalPages) })}
           </span>
           <Button
             variant="outline"
@@ -110,7 +114,7 @@ export default function UserChatHistory({ userId }: { userId: string | number })
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
           >
-            صفحه بعد
+            {t.nextPage}
           </Button>
         </div>
       )}

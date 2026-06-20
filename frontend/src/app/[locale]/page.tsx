@@ -23,8 +23,8 @@ export default function LocaleHome() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f1eb] gap-8 p-6">
       <div className="text-center space-y-3">
-        <h1 className="text-4xl font-extrabold text-[#2d1812]">جیبیار</h1>
-        <p className="text-[#2d1812]/70 text-lg">مدیریت مالی هوشمند</p>
+        <h1 className="text-4xl font-extrabold text-[#2d1812]">{dict.home.appName ?? dict.common.appName}</h1>
+        <p className="text-[#2d1812]/70 text-lg">{dict.home.headline}</p>
       </div>
 
       {/* Language selector */}
@@ -51,7 +51,7 @@ export default function LocaleHome() {
         onClick={() => router.push(`/${locale}/login`)}
         className="w-full max-w-xs py-4 rounded-full bg-[#2d1812] text-white font-bold text-lg hover:bg-[#2d1812]/90 transition"
       >
-        {dict.home?.loginBtn || "Login"}
+        {dict.home.loginBtn || "Login"}
       </button>
     </div>
   );

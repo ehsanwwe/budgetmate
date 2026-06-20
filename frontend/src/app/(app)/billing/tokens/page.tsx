@@ -2,6 +2,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api from "@/lib/api";
+import { useLocale } from "@/i18n/LocaleContext";
+import { t as tDict } from "@/i18n/getDictionary";
+import { formatNumber } from "@/i18n/formatters";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Coins, CheckCircle2, Loader2 } from "lucide-react";
@@ -17,11 +20,9 @@ interface Wallet {
   balance_tokens: number;
 }
 
-function fmtNum(n: number) {
-  return new Intl.NumberFormat("fa-IR").format(n);
-}
-
 export default function TokensPage() {
+  const { locale, dict } = useLocale();
+  const t = dict.billing.tokens;
   const [packs, setPacks] = useState<TokenPack[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
@@ -38,9 +39,11 @@ export default function TokensPage() {
       const res = await api.post("/billing/purchase-token-pack", { plan_id: planId });
       setWallet(res.data.wallet);
       setBought(planId);
-      toast.success(`${fmtNum(res.data.tokens_added)} توکن به کیف پول شما اضافه شد`);
+      toast.success(
+        tDict(dict, "billing.tokens.buySuccess", { count: formatNumber(res.data.tokens_added, locale) })
+      );
     } catch {
-      toast.error("خطا در خرید. دوباره تلاش کنید");
+      toast.error(t.buyError);
     } finally {
       setBuying(null);
     }
@@ -51,11 +54,11 @@ export default function TokensPage() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Coins className="h-6 w-6 text-primary" />
-          خرید توکن
+          {t.title}
         </h1>
         {wallet && (
           <p className="text-sm text-muted-foreground mt-1">
-            موجودی فعلی: <span className="font-semibold text-primary">{fmtNum(wallet.balance_tokens)}</span> توکن
+            {t.currentBalance} <span className="font-semibold text-primary">{formatNumber(wallet.balance_tokens, locale)}</span> {dict.common.token}
           </p>
         )}
       </div>
@@ -69,11 +72,11 @@ export default function TokensPage() {
                 {bought === pack.plan_id && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
               </CardTitle>
               <CardDescription>
-                {fmtNum(pack.tokens)} توکن
+                {formatNumber(pack.tokens, locale)} {t.tokensSuffix}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-between">
-              <span className="text-lg font-bold">{fmtNum(pack.amount_toman)} تومان</span>
+              <span className="text-lg font-bold">{formatNumber(pack.amount_toman, locale)} {t.tomanLabel}</span>
               <Button
                 onClick={() => handlePurchase(pack.plan_id)}
                 disabled={buying === pack.plan_id}
@@ -81,7 +84,7 @@ export default function TokensPage() {
                 variant={bought === pack.plan_id ? "outline" : "default"}
               >
                 {buying === pack.plan_id && <Loader2 className="h-4 w-4 animate-spin" />}
-                {bought === pack.plan_id ? "خریداری شد" : "خرید"}
+                {bought === pack.plan_id ? t.purchasedButton : t.buyButton}
               </Button>
             </CardContent>
           </Card>
@@ -89,7 +92,7 @@ export default function TokensPage() {
       </div>
 
       <p className="text-xs text-muted-foreground text-center">
-        خرید آزمایشی — توکن‌ها فوری به کیف پول اضافه می‌شوند
+        {t.trialNote}
       </p>
     </div>
   );
