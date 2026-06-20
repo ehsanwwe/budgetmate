@@ -94,7 +94,7 @@ function CountryDropdown({
   const flag = value ? toFlag(value) : "🌐";
 
   return (
-    <div ref={containerRef} className="relative" dir="ltr">
+    <div ref={containerRef} className="relative h-full" dir="ltr">
       {/* Trigger */}
       <button
         type="button"
