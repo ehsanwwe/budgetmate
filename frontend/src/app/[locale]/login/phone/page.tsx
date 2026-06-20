@@ -1,11 +1,13 @@
-﻿"use client";
+"use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import api from "@/lib/api";
 import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
+import InternationalPhoneInput from "@/components/auth/InternationalPhoneInput";
 
 export default function LoginPhonePage() {
   const router = useRouter();
@@ -17,17 +19,19 @@ export default function LoginPhonePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // User types 10 digits without leading 0 (e.g. 9120000001); we prepend "0" for the backend
-  const isValid = /^9\d{9}$/.test(phone);
+  const isValid = phone ? isValidPhoneNumber(phone) : false;
 
   async function handleContinue() {
-    if (!isValid) return;
+    if (!isValid) {
+      setError(t.invalidPhone);
+      return;
+    }
     setLoading(true);
     setError("");
-    const fullPhone = "0" + phone;
     try {
-      await api.post("/auth/request-otp", { phone: fullPhone });
-      router.push(`/${locale}/login/otp?phone=${encodeURIComponent(fullPhone)}`);
+      // phone is already in E.164 format (e.g. +989121234567)
+      await api.post("/auth/request-otp", { phone });
+      router.push(`/${locale}/login/otp?phone=${encodeURIComponent(phone)}`);
     } catch {
       setError(t.sendError);
     } finally {
@@ -35,10 +39,8 @@ export default function LoginPhonePage() {
     }
   }
 
-  function handleInput(val: string) {
-    // Strip non-digits; cap at 10 (user types without leading 0)
-    const digits = val.replace(/\D/g, "").slice(0, 10);
-    setPhone(digits);
+  function handleChange(val: string) {
+    setPhone(val);
     if (error) setError("");
   }
 
@@ -82,32 +84,19 @@ export default function LoginPhonePage() {
           transition={{ delay: 0.2, duration: 0.3 }}
           className="pt-4"
         >
-          {/* Phone input with prefix — dir="ltr" so +98 stays on the left */}
-          <div
-            dir="ltr"
-            className={`flex items-center rounded-2xl bg-white shadow-sm border-2 overflow-hidden transition-colors ${
-              error ? "border-red-400" : isValid ? "border-emerald-400" : "border-transparent focus-within:border-[#2d1812]/30"
-            }`}
-          >
-            <div className="flex items-center justify-center px-4 py-4 bg-[#2d1812]/5 border-r border-[#2d1812]/10 shrink-0">
-              <span className="text-base font-semibold text-[#2d1812] font-mono">+98</span>
-            </div>
-            <input
-              type="tel"
-              inputMode="numeric"
-              value={phone}
-              onChange={(e) => handleInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && isValid && handleContinue()}
-              placeholder={t.placeholder}
-              className="flex-1 px-4 py-4 bg-transparent text-xl font-mono tabular-nums text-[#2d1812] placeholder:text-gray-300 focus:outline-none"
-              dir="ltr"
-              autoFocus
-              maxLength={10}
-            />
-          </div>
-          {error && <p className={`mt-2 text-sm text-red-500 ${dir === "rtl" ? "text-right" : "text-left"}`}>{error}</p>}
-          {!isValid && phone.length > 0 && !error && (
-            <p className={`mt-2 text-sm text-gray-400 ${dir === "rtl" ? "text-right" : "text-left"}`}>{t.helper}</p>
+          <InternationalPhoneInput
+            value={phone}
+            onChange={handleChange}
+            locale={locale}
+            error={error}
+            disabled={loading}
+            placeholder={t.placeholder}
+            countrySearchPlaceholder={t.countrySearchPlaceholder}
+          />
+          {!error && phone && !isValid && (
+            <p className={`mt-2 text-sm text-gray-400 ${dir === "rtl" ? "text-right" : "text-left"}`}>
+              {t.helper}
+            </p>
           )}
         </motion.div>
       </div>

@@ -90,10 +90,12 @@
     "phonePage": {
       "title": "请输入手机号",
       "subtitle": "我们将向您发送验证码",
-      "placeholder": "912 345 6789",
-      "helper": "号码必须为 10 位且以 9 开头",
+      "placeholder": "手机号码",
+      "helper": "请输入含国家代码的手机号",
       "submitButton": "继续",
-      "sendError": "发送验证码失败。请重试"
+      "sendError": "发送验证码失败。请重试",
+      "invalidPhone": "无效的手机号码",
+      "countrySearchPlaceholder": "搜索国家…"
     },
     "otpPage": {
       "title": "输入验证码",

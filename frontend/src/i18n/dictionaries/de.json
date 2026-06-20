@@ -90,10 +90,12 @@
     "phonePage": {
       "title": "Telefonnummer eingeben",
       "subtitle": "Wir senden Ihnen einen Bestätigungscode",
-      "placeholder": "912 345 6789",
-      "helper": "Die Nummer muss 10 Ziffern haben und mit 9 beginnen",
+      "placeholder": "Telefonnummer",
+      "helper": "Geben Sie Ihre Mobilnummer mit Ländervorwahl ein",
       "submitButton": "Weiter",
-      "sendError": "Code konnte nicht gesendet werden. Bitte erneut versuchen"
+      "sendError": "Code konnte nicht gesendet werden. Bitte erneut versuchen",
+      "invalidPhone": "Ungültige Telefonnummer",
+      "countrySearchPlaceholder": "Länder suchen…"
     },
     "otpPage": {
       "title": "Code eingeben",

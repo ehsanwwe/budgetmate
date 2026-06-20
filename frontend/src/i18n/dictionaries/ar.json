@@ -90,10 +90,12 @@
     "phonePage": {
       "title": "أدخل رقم هاتفك",
       "subtitle": "سنرسل لك رمز تحقق",
-      "placeholder": "912 345 6789",
-      "helper": "يجب أن يتكون الرقم من ١٠ أرقام ويبدأ بـ ٩",
+      "placeholder": "رقم الهاتف",
+      "helper": "أدخل رقم هاتفك مع رمز البلد",
       "submitButton": "متابعة",
-      "sendError": "فشل إرسال الرمز. يرجى المحاولة مرة أخرى"
+      "sendError": "فشل إرسال الرمز. يرجى المحاولة مرة أخرى",
+      "invalidPhone": "رقم هاتف غير صالح",
+      "countrySearchPlaceholder": "ابحث عن الدول…"
     },
     "otpPage": {
       "title": "أدخل الرمز",
