@@ -8,6 +8,29 @@ from app.services.finance_context import build_finance_context
 from app.services.personal_cfo.cfo_context_builder import build_cfo_context
 
 
+_FINANCIAL_STATUS_LABELS = {
+    "stable_income": "درآمد ثابت دارد و می‌خواهد بهتر مدیریت کند",
+    "irregular_income": "درآمدش نامنظم است",
+    "overspending": "خرج‌هایش از کنترل خارج شده یا زیاد شده",
+    "in_debt": "بدهی، قسط یا تعهد مالی دارد",
+    "saving_for_goal": "برای یک هدف مشخص پس‌انداز می‌کند",
+    "low_income_pressure": "درآمدش کم است و فشار مالی دارد",
+    "planning_only": "فعلاً فقط می‌خواهد خرج‌ها و بودجه را شفاف کند",
+    "other": "وضعیت مالی دیگری دارد",
+}
+
+_FINANCIAL_STATUS_GUIDANCE = {
+    "stable_income": "پاسخ‌ها می‌توانند برنامه‌ریزی‌محور و رشد‌گرا باشند.",
+    "irregular_income": "قبل از هر توصیه، نوسان درآمد را مدنظر بگیر. ذخیره اضطراری اولویت دارد.",
+    "overspending": "اول وضعیت هزینه‌ها را بررسی کن. پیشنهادهای کاهش هزینه اولویت دارند.",
+    "in_debt": "پاسخ‌ها باید محتاط‌تر، اولویت‌محورتر و ضدریسک باشند. قبل از پیشنهاد خرید یا هدف جدید، تعهدات، بدهی‌ها و چک‌های نزدیک بررسی شود.",
+    "saving_for_goal": "کمک به محاسبه پس‌انداز ماهانه برای هدف اولویت دارد.",
+    "low_income_pressure": "پاسخ‌ها باید واقع‌بینانه و کم‌هزینه باشند. از پیشنهاد هزینه‌های اختیاری خودداری کن.",
+    "planning_only": "تمرکز بر شفاف‌سازی، دسته‌بندی و گزارش هزینه‌ها.",
+    "other": "از وضعیت مالی با دقت و بدون فرض پیش‌فرض برخورد کن.",
+}
+
+
 def build_agent_context(user: User, db: Session) -> dict:
     context = build_finance_context(user, db)
     preferred_language = getattr(user, "language", None) or DEFAULT_LOCALE
@@ -24,6 +47,7 @@ def build_agent_context(user: User, db: Session) -> dict:
             "chat_mode": context["user"].get("chat_mode"),
             "preferred_language": preferred_language,
             "preferred_currency": preferred_currency,
+            "current_financial_status": getattr(user, "current_financial_status", None),
         },
         "current_gregorian_date": context["current_gregorian_date"],
         "current_jalali_month": context["current_jalali_month"],
@@ -39,6 +63,14 @@ def build_agent_context(user: User, db: Session) -> dict:
         "output_language_instruction": _build_language_instruction(preferred_language, preferred_currency, direction),
     }
     payload["personal_cfo"] = build_cfo_context(db, user.id)
+
+    # Financial status guidance injected directly into LLM context
+    cfs = getattr(user, "current_financial_status", None)
+    payload["financial_status_context"] = {
+        "current_financial_status": cfs or "unknown",
+        "label_fa": _FINANCIAL_STATUS_LABELS.get(cfs or "", "وضعیت مالی مشخص نشده"),
+        "guidance": _FINANCIAL_STATUS_GUIDANCE.get(cfs or "", "از وضعیت مالی با دقت و بدون فرض پیش‌فرض برخورد کن."),
+    }
     return payload
 
 

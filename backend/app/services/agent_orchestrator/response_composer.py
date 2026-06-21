@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.i18n.service import t as i18n_t
+from app.services.agent_orchestrator.persian_utils import to_persian_digits
 from app.models.category import Category
 from app.models.goal import Goal
 from app.models.transaction import Transaction, TransactionType
@@ -67,8 +68,9 @@ class ResponseComposer:
         locale: str = "fa",
     ) -> AgentFinalResponse:
         if plan.clarification_question:
+            msg = sanitize_user_message(plan.clarification_question) or i18n_t("composer.clarification", locale)
             return AgentFinalResponse(
-                message=sanitize_user_message(plan.clarification_question) or i18n_t("composer.clarification", locale),
+                message=to_persian_digits(msg) if locale == "fa" else msg,
                 metadata={"intent": plan.intent},
             )
 
@@ -115,6 +117,8 @@ class ResponseComposer:
         # For SELECT-only turns the hint has already been stripped of leaked op sentences above.
         any_executed = any(r.executed for r in results)
         if safe_hint and any_executed:
+            if locale == "fa":
+                safe_hint = to_persian_digits(safe_hint)
             return AgentFinalResponse(
                 message=safe_hint,
                 operations_summary=[r.summary or "" for r in results if r.summary],

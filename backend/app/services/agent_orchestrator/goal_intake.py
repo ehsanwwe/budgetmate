@@ -21,6 +21,7 @@ from app.services.agent_orchestrator.date_utils import local_today, parse_relati
 from app.services.agent_orchestrator.types import AgentFinalResponse
 from app.services.agent_orchestrator.value_normalizer import normalize_amount
 from app.services.ai import LLMProviderError, get_ai_chat_completion
+from app.services.agent_orchestrator.persian_utils import to_persian_digits
 
 logger = logging.getLogger(__name__)
 
@@ -94,13 +95,21 @@ _CHOICE_USER_TMPL = """کاربر باید بین ثبت هدف مالی یا م
 
 پیام کاربر: {message}
 
-فقط یکی از این سه را برگردان (یک کلمه):
-- add   — اگر کاربر می‌خواهد ثبت/اضافه کند
-- consult — اگر کاربر می‌خواهد مشاوره بگیرد
+فقط یکی از این چهار را برگردان (یک کلمه):
+- add      — اگر کاربر می‌خواهد ثبت/اضافه کند
+- consult  — اگر کاربر می‌خواهد مشاوره بگیرد
+- both     — اگر کاربر می‌خواهد هر دو (هر دو، جفتش، هردو، هر دو تا)
 - ambiguous — اگر مشخص نیست
 
 کلیدواژه‌های ثبت: اضافه کن، ثبت کن، بله، آره، بزن، هدفش کن، باشه ثبت، بزن تو، ok
-کلیدواژه‌های مشاوره: مشاوره، بررسی، به نظرت، منطقی، می‌صرفه، راهنمایی، نه اول، صبر کن، فکر کن"""
+کلیدواژه‌های مشاوره: مشاوره، بررسی، به نظرت، منطقی، می‌صرفه، راهنمایی، نه اول، صبر کن، فکر کن
+کلیدواژه‌های هر دو: هر دو، هردو، جفتش، هر دو تا، both"""
+
+_CANCEL_KEYWORDS = {
+    "ولش کن", "ول کن", "بی‌خیال", "بیخیال", "منصرف شدم", "نمی‌خوام",
+    "نمیخوام", "فراموشش کن", "فراموش کن", "لغو", "کنسل", "cancel",
+    "نه ولش", "بذار بره", "ولم کن", "بیخیالش",
+}
 
 _ADVISORY_SYSTEM = """شما Personal CFO (مدیر مالی شخصی) هستید.
 چهار نقش دارید: مدیر مالی، روانشناس مالی، برنامه‌ریز مالی بلندمدت، دستیار تصمیم مالی.
@@ -199,20 +208,63 @@ class GoalIntakeGate:
         state = intent.payload_json.get("state")
 
         if state == STATE_COLLECTING_AMOUNT:
-            return await self._collect_amount(db, user, user_message, intent)
+            return await self._collect_amount(db, user, user_message, intent, history)
         if state == STATE_COLLECTING_DATE:
-            return await self._collect_date(db, user, user_message, intent)
+            return await self._collect_date(db, user, user_message, intent, history)
         if state == STATE_AWAITING_CHOICE:
             return await self._awaiting_choice(db, user, user_message, intent, history, finance_context)
         if state == STATE_CONSULTATION:
             return await self._consultation(db, user, user_message, intent, history, finance_context)
         return None
 
+    def _is_cancellation(self, text: str) -> bool:
+        cleaned = text.strip().lower().replace("‌", " ")
+        return any(kw in cleaned for kw in _CANCEL_KEYWORDS)
+
+    def _amount_from_history(self, history: list[dict] | None, item_title: str) -> int | None:
+        """Scan recent history for an amount mentioned near the goal title."""
+        if not history:
+            return None
+        title_lower = item_title.lower()
+        for msg in reversed(history[-10:]):
+            content = str(msg.get("content") or "")
+            if title_lower in content.lower() or any(
+                kw in content for kw in ["میلیون", "هزار", "تومان"]
+            ):
+                amount = self._try_extract_amount(content)
+                if amount is not None:
+                    return amount
+        return None
+
     async def _collect_amount(
-        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent
+        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent,
+        history: list[dict] | None = None,
     ) -> AgentFinalResponse | None:
         payload = intent.payload_json
         item_title = payload.get("item_title", "آن خرید")
+
+        # Check cancellation first
+        if self._is_cancellation(user_message):
+            self._cancel_stale_intents(db, user)
+            return AgentFinalResponse(
+                message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                metadata={"goal_intake_state": STATE_CANCELLED},
+            )
+
+        # User claims they already said it — check history
+        if any(kw in user_message for kw in ["قبلاً گفتم", "قبلا گفتم", "گفتم", "گفته بودم", "همین چت"]):
+            hist_amount = self._amount_from_history(history, item_title)
+            if hist_amount is not None:
+                extraction = await self._extract_values(user_message)
+                date_text = extraction.get("target_date_text") or payload.get("target_date_text")
+                if date_text:
+                    self._update_intent(db, intent, {"target_amount": hist_amount, "target_date_text": date_text}, STATE_AWAITING_CHOICE)
+                    return self._ask_add_or_consult(item_title, hist_amount, date_text, intent.id)
+                self._update_intent(db, intent, {"target_amount": hist_amount}, STATE_COLLECTING_DATE)
+                return AgentFinalResponse(
+                    message="تا چه زمانی می‌خواهی به این خرید برسی؟",
+                    metadata={"goal_intake_state": STATE_COLLECTING_DATE, "intent_id": intent.id},
+                )
 
         amount = self._try_extract_amount(user_message)
         if amount is None:
@@ -228,7 +280,6 @@ class GoalIntakeGate:
             if detection and detection.get("is_goal_like") and detection.get("item_title"):
                 new_title = str(detection.get("item_title") or "").strip()
                 if new_title and new_title.lower() != (payload.get("item_title") or "").lower():
-                    # New goal-like message → restart intake
                     self._cancel_stale_intents(db, user)
                     new_amount = detection.get("amount")
                     new_date = detection.get("target_date_text")
@@ -252,9 +303,17 @@ class GoalIntakeGate:
         )
 
     async def _collect_date(
-        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent
+        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent,
+        history: list[dict] | None = None,
     ) -> AgentFinalResponse | None:
         payload = intent.payload_json
+
+        if self._is_cancellation(user_message):
+            self._cancel_stale_intents(db, user)
+            return AgentFinalResponse(
+                message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                metadata={"goal_intake_state": STATE_CANCELLED},
+            )
 
         extraction = await self._extract_values(user_message)
         date_text = extraction.get("target_date_text")
@@ -284,6 +343,14 @@ class GoalIntakeGate:
         finance_context: dict,
     ) -> AgentFinalResponse:
         payload = intent.payload_json
+
+        if self._is_cancellation(user_message):
+            self._cancel_stale_intents(db, user)
+            return AgentFinalResponse(
+                message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                metadata={"goal_intake_state": STATE_CANCELLED},
+            )
+
         choice = await self._classify_choice(user_message)
 
         if choice == "add":
@@ -295,9 +362,18 @@ class GoalIntakeGate:
                 message=advisory,
                 metadata={"goal_intake_state": STATE_CONSULTATION, "intent_id": intent.id},
             )
-        # ambiguous
+        if choice == "both":
+            return AgentFinalResponse(
+                message=(
+                    "متوجه‌ام، اما برای ادامه‌ی این مرحله نمی‌تونم هم‌زمان هر دو مسیر رو شروع کنم. "
+                    "اول باید مشخص کنی می‌خوای این مورد به‌عنوان هدف ثبت بشه یا فعلاً فقط مشاوره مالی بگیری. "
+                    "بعد از انجام یکی، می‌تونیم سراغ مسیر بعدی هم بریم."
+                ),
+                metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
+            )
+        # ambiguous — rephrase to avoid word-for-word repeat
         return AgentFinalResponse(
-            message="می‌خواهی ثبتش کنم یا اول مشاوره بگیری؟",
+            message="برای ادامه یکی رو انتخاب کن: «ثبتش کن» یا «اول مشاوره بده».",
             metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
         )
 
@@ -371,9 +447,9 @@ class GoalIntakeGate:
 
         self._consume_intent(db, intent)
 
-        deadline_text = f"، مهلت {goal.deadline.isoformat()}" if goal.deadline else ""
+        deadline_text = to_persian_digits(f"، مهلت {goal.deadline.isoformat()}") if goal.deadline else ""
         return AgentFinalResponse(
-            message=f"هدف «{goal.title}» با مبلغ {goal.target_amount:,} تومان{deadline_text} ثبت شد.",
+            message=to_persian_digits(f"هدف «{goal.title}» با مبلغ {goal.target_amount:,} تومان{deadline_text} ثبت شد."),
             operations_summary=["inserted goal"],
             metadata={"goal_intake_state": STATE_CONSUMED, "goal_id": goal.id},
         )
@@ -541,11 +617,14 @@ class GoalIntakeGate:
         """Classify user's add/consult choice. Returns 'add', 'consult', or 'ambiguous'."""
         # Fast keyword-based classification first
         text = user_message.strip().lower().replace("‌", " ")
+        both_kw = ["هر دو", "هردو", "جفتش", "هر دو تا", "both"]
         add_kw = ["اضافه کن", "ثبت کن", "بزن تو اهداف", "هدفش کن", "ثبتش کن",
                   "به هدف", "بزن", "آره", "بله", "ok", "اوکی", "باشه ثبت"]
         consult_kw = ["مشاوره", "بررسی کن", "بررسیش کن", "به نظرت", "منطقیه",
                       "می‌صرفه", "میصرفه", "راهنمایی", "نه اول", "اول مشاوره",
                       "نظرت", "صبر کن", "فکر کن"]
+        if any(kw in text for kw in both_kw):
+            return "both"
         if any(kw in text for kw in add_kw):
             return "add"
         if any(kw in text for kw in consult_kw):
@@ -559,6 +638,8 @@ class GoalIntakeGate:
         try:
             raw = await get_ai_chat_completion(messages, require_json=False)
             word = raw.strip().lower().split()[0] if raw.strip() else "ambiguous"
+            if "both" in word:
+                return "both"
             if "add" in word:
                 return "add"
             if "consult" in word:

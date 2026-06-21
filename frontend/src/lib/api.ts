@@ -37,9 +37,13 @@ api.interceptors.response.use(
   (err) => {
     if (typeof window !== "undefined") {
       if (err.response?.status === 401) {
-        const isAdminRoute = window.location.pathname.startsWith("/admin");
+        const path = window.location.pathname;
+        const isAdminRoute = path.includes("/admin");
         if (isAdminRoute) {
-          window.location.href = "/admin";
+          // preserve locale prefix if present
+          const locale = path.split("/")[1];
+          const adminLoginPath = ["fa","ar","en","de","zh"].includes(locale) ? `/${locale}/admin` : "/admin";
+          window.location.href = adminLoginPath;
         } else {
           localStorage.removeItem("auth-storage");
           window.location.href = "/login";

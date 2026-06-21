@@ -20,11 +20,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 class AdminStats(BaseModel):
-    users_total: int
-    users_active_7d: int
-    transactions_total: int
-    transactions_today: int
-    chat_messages_total: int
+    total_users: int
+    active_users: int
+    blocked_users: int
+    total_transactions: int
+    total_goals: int
 
 
 @router.get("/stats", response_model=AdminStats)
@@ -32,22 +32,21 @@ def get_stats(
     admin: AdminUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    users_total = db.query(User).count()
+    total_users = db.query(User).count()
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    users_active_7d = db.query(func.count(func.distinct(ActivityLog.user_id))).filter(
+    active_users = db.query(func.count(func.distinct(ActivityLog.user_id))).filter(
         ActivityLog.created_at >= seven_days_ago,
         ActivityLog.user_id.isnot(None),
     ).scalar() or 0
-    transactions_total = db.query(Transaction).count()
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    transactions_today = db.query(Transaction).filter(Transaction.created_at >= today_start).count()
-    chat_messages_total = db.query(ChatMessage).count()
+    blocked_users = db.query(User).filter(User.is_blocked == True).count()
+    total_transactions = db.query(Transaction).count()
+    total_goals = db.query(Goal).count()
     return AdminStats(
-        users_total=users_total,
-        users_active_7d=users_active_7d,
-        transactions_total=transactions_total,
-        transactions_today=transactions_today,
-        chat_messages_total=chat_messages_total,
+        total_users=total_users,
+        active_users=active_users,
+        blocked_users=blocked_users,
+        total_transactions=total_transactions,
+        total_goals=total_goals,
     )
 
 

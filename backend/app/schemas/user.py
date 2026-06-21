@@ -5,6 +5,16 @@ from app.i18n.config import SUPPORTED_LOCALES, SUPPORTED_CURRENCIES
 
 VALID_INCOME_RANGES = {"lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"}
 VALID_CHAT_MODES = {"normal", "roast", "hype"}
+VALID_FINANCIAL_STATUSES = {
+    "stable_income",
+    "irregular_income",
+    "overspending",
+    "in_debt",
+    "saving_for_goal",
+    "low_income_pressure",
+    "planning_only",
+    "other",
+}
 
 
 class UserOut(BaseModel):
@@ -27,6 +37,7 @@ class UserOut(BaseModel):
     onboarding_completed_at: Optional[datetime] = None
     chat_mode: str = "normal"
     preferred_currency: str = "IRT"
+    current_financial_status: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -104,12 +115,20 @@ class ProfileUpdate(BaseModel):
     province: Optional[str] = None
     city: Optional[str] = None
     income_range: Optional[str] = None
+    current_financial_status: Optional[str] = None
 
     @field_validator("income_range", mode="before")
     @classmethod
     def validate_income_range(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in VALID_INCOME_RANGES:
             raise ValueError(f"income_range must be one of: {', '.join(VALID_INCOME_RANGES)}")
+        return v
+
+    @field_validator("current_financial_status", mode="before")
+    @classmethod
+    def validate_financial_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_FINANCIAL_STATUSES:
+            raise ValueError(f"current_financial_status must be one of: {', '.join(VALID_FINANCIAL_STATUSES)}")
         return v
 
     @field_validator("birthdate", mode="before")
@@ -140,5 +159,6 @@ class OnboardingStatus(BaseModel):
     city: Optional[str] = None
     income_range: Optional[str] = None
     agreement_version: Optional[str] = None
+    current_financial_status: Optional[str] = None
 
     model_config = {"from_attributes": True}

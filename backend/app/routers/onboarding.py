@@ -26,6 +26,7 @@ def get_onboarding_status(current_user: User = Depends(get_current_user)):
         city=current_user.city,
         income_range=current_user.income_range,
         agreement_version=current_user.agreement_version,
+        current_financial_status=current_user.current_financial_status,
     )
 
 
@@ -49,6 +50,8 @@ def update_profile(
         current_user.city = body.city
     if body.income_range is not None:
         current_user.income_range = body.income_range
+    if body.current_financial_status is not None:
+        current_user.current_financial_status = body.current_financial_status
     db.commit()
     db.refresh(current_user)
     return {"ok": True, "message": "پروفایل با موفقیت به‌روز شد"}
