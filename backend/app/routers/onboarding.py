@@ -1,12 +1,16 @@
 from datetime import date as DateType, datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.core.auth import get_current_user
 from app.models.user import User
-from app.schemas.user import ProfileUpdate, AgreementAccept, OnboardingStatus
+from app.models.personal_cfo import FinancialMemory
+from app.schemas.user import AgreementAccept, OnboardingIntroRequest, OnboardingStatus, ProfileUpdate
 from app.data.iran_geo import PROVINCES, CITIES
 from app.services.onboarding_budget import initialize_budget_from_income_range
+from app.services.personal_cfo.memory_service import create_memory
+from app.services.stt import transcribe_audio
 
 router = APIRouter(tags=["onboarding"])
 
@@ -81,6 +85,77 @@ def complete_onboarding(
     current_user.onboarding_completed_at = datetime.utcnow()
     db.commit()
     return {"ok": True, "message": "ثبت‌نام تکمیل شد"}
+
+
+@router.post("/onboarding/intro")
+def save_onboarding_intro(
+    body: OnboardingIntroRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    text = (body.text or "").strip()
+    transcript = (body.audio_transcript or "").strip()
+
+    if not text and not transcript:
+        return {"ok": True, "message": "هیچ محتوایی برای ذخیره وجود ندارد"}
+
+    if text and transcript:
+        source_label = "mixed"
+        combined = f"{text}\n\n[صدا]: {transcript}"
+        confidence = 0.8
+    elif text:
+        source_label = "text"
+        combined = text
+        confidence = 0.85
+    else:
+        source_label = "audio"
+        combined = transcript
+        confidence = 0.7
+
+    existing = (
+        db.query(FinancialMemory)
+        .filter(
+            FinancialMemory.user_id == current_user.id,
+            FinancialMemory.title == "onboarding_self_description",
+            FinancialMemory.is_active == True,
+        )
+        .all()
+    )
+    for m in existing:
+        m.is_active = False
+    if existing:
+        db.commit()
+
+    create_memory(
+        db=db,
+        user_id=current_user.id,
+        memory_type="user_profile",
+        title="onboarding_self_description",
+        content_json={
+            "text": text or None,
+            "audio_transcript": transcript or None,
+            "combined_text": combined,
+            "source": source_label,
+            "created_from": "onboarding_intro",
+        },
+        source="onboarding",
+        confidence=confidence,
+    )
+    return {"ok": True, "message": "اطلاعات با موفقیت ذخیره شد"}
+
+
+@router.post("/onboarding/intro/audio")
+async def transcribe_intro_audio(
+    file: UploadFile = File(...),
+    duration_seconds: Optional[float] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    audio_bytes = await file.read()
+    content_type = file.content_type or "audio/webm"
+    result = await transcribe_audio(audio_bytes, content_type)
+    transcript = result.get("transcript", "")
+    empty = not bool(transcript.strip())
+    return {"ok": True, "transcript": transcript, "empty": empty}
 
 
 @router.get("/iran/provinces")

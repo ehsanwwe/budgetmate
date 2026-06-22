@@ -158,6 +158,28 @@
         "saveFailed": "Failed to save data. Please try again"
       }
     },
+    "introPage": {
+      "title": "Introduce yourself to BudgetMate",
+      "subtitle": "Write or record anything you think affects your financial decisions — overspending, financial stress, debt, buying habits, savings goals, or income style.",
+      "videoTitle": "Take a minute",
+      "videoDescription": "See how I can help you",
+      "textTitle": "Introduce yourself",
+      "textPlaceholder": "e.g. I tend to overspend when stressed, my income is irregular, and I want to think before I spend...",
+      "audioTitle": "Or say it out loud",
+      "audioDescription": "If you prefer, you can record a voice message",
+      "recordButton": "Start recording",
+      "stopButton": "Stop recording",
+      "cancelButton": "Cancel",
+      "uploading": "Uploading audio...",
+      "transcriptTitle": "Recorded text",
+      "emptyTranscriptNotice": "No text extracted from audio; you can type directly",
+      "audioFailedNotice": "Audio upload failed; you can still continue",
+      "skipButton": "Skip",
+      "nextButton": "Continue",
+      "backButton": "Back",
+      "saveFailed": "Failed to save. Please try again",
+      "optional": "Optional"
+    },
     "agreementPage": {
       "title": "Terms & Conditions",
       "subtitle": "Read this short text before getting started",

@@ -176,7 +176,7 @@ export default function OnboardingProfilePage() {
       // Clear draft — all values are now saved in backend
       if (userId) onboardingDraft.clear(userId);
 
-      router.push(`/${locale}/onboarding/agreement`);
+      router.push(`/${locale}/onboarding/intro`);
     } catch {
       setError(t.errors.saveFailed);
     } finally {

@@ -158,6 +158,28 @@
         "saveFailed": "Daten konnten nicht gespeichert werden. Bitte erneut versuchen"
       }
     },
+    "introPage": {
+      "title": "Stell dich BudgetMate vor",
+      "subtitle": "Schreib oder sprich alles auf, was deine finanziellen Entscheidungen beeinflusst — Ausgaben, finanzieller Stress, Schulden, Kaufgewohnheiten, Sparziele oder dein Einkommensstil.",
+      "videoTitle": "Nimm dir eine Minute",
+      "videoDescription": "Sieh, wie ich dir helfen kann",
+      "textTitle": "Stell dich vor",
+      "textPlaceholder": "z.B.: Ich gebe zu viel aus wenn ich gestresst bin, mein Einkommen ist unregelmäßig und ich möchte vor dem Ausgeben besser nachdenken...",
+      "audioTitle": "Oder sag es laut",
+      "audioDescription": "Wenn du möchtest, kannst du eine Sprachnachricht aufnehmen",
+      "recordButton": "Aufnahme starten",
+      "stopButton": "Aufnahme stoppen",
+      "cancelButton": "Abbrechen",
+      "uploading": "Audio wird hochgeladen...",
+      "transcriptTitle": "Aufgezeichneter Text",
+      "emptyTranscriptNotice": "Kein Text aus Audio extrahiert; du kannst direkt tippen",
+      "audioFailedNotice": "Audio-Upload fehlgeschlagen; du kannst trotzdem fortfahren",
+      "skipButton": "Überspringen",
+      "nextButton": "Weiter",
+      "backButton": "Zurück",
+      "saveFailed": "Speichern fehlgeschlagen. Bitte erneut versuchen",
+      "optional": "Optional"
+    },
     "agreementPage": {
       "title": "Geschäftsbedingungen",
       "subtitle": "Lesen Sie diesen kurzen Text, bevor Sie beginnen",

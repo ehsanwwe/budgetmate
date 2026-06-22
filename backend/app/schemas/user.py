@@ -162,3 +162,10 @@ class OnboardingStatus(BaseModel):
     current_financial_status: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class OnboardingIntroRequest(BaseModel):
+    text: Optional[str] = None
+    audio_transcript: Optional[str] = None
+    audio_duration_seconds: Optional[float] = None
+    source: Optional[str] = None  # "text" | "audio" | "mixed"

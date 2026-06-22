@@ -158,6 +158,28 @@
         "saveFailed": "保存数据失败，请重试"
       }
     },
+    "introPage": {
+      "title": "向 BudgetMate 介绍你自己",
+      "subtitle": "写下或录音任何影响你财务决策的事情——过度消费、财务压力、债务、购买习惯、储蓄目标或收入方式。",
+      "videoTitle": "花一分钟",
+      "videoDescription": "看看我如何帮助你",
+      "textTitle": "介绍你自己",
+      "textPlaceholder": "例如：我在压力大时容易超支，收入不稳定，希望花钱前能更好地思考...",
+      "audioTitle": "或者说出来",
+      "audioDescription": "如果你愿意，可以录制语音消息",
+      "recordButton": "开始录音",
+      "stopButton": "停止录音",
+      "cancelButton": "取消",
+      "uploading": "正在上传音频...",
+      "transcriptTitle": "录音文字",
+      "emptyTranscriptNotice": "未能从音频中提取文字；你可以直接输入",
+      "audioFailedNotice": "音频上传失败；你仍然可以继续",
+      "skipButton": "跳过",
+      "nextButton": "继续",
+      "backButton": "返回",
+      "saveFailed": "保存失败，请重试",
+      "optional": "可选"
+    },
     "agreementPage": {
       "title": "条款与条件",
       "subtitle": "开始前请先阅读这段简短说明",
