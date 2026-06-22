@@ -1,5 +1,5 @@
-﻿"use client";
-import { useState, useEffect } from "react";
+"use client";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
 import { t as tDict } from "@/i18n/getDictionary";
+import { onboardingDraft, OnboardingDraft } from "@/hooks/useOnboardingDraft";
 
 const INCOME_VALUES = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
 const FINANCIAL_STATUS_VALUES = [
@@ -22,6 +23,7 @@ const JALALI_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 export default function OnboardingProfilePage() {
   const router = useRouter();
   const { token, setUser } = useAuthStore();
+  const userId = useAuthStore((s) => s.user?.id);
   const { locale, dict } = useLocale();
   const t = dict.onboarding.profilePage;
 
@@ -38,18 +40,78 @@ export default function OnboardingProfilePage() {
   const [financialStatus, setFinancialStatus] = useState<FinancialStatusValue | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Becomes true after backend/draft hydration completes, gates auto-save
+  const [hydrated, setHydrated] = useState(false);
+  // Holds city to restore once cities list loads after province is set
+  const pendingCityRef = useRef<string>("");
 
+  // On mount: fetch provinces + backend status, merge with local draft
   useEffect(() => {
     if (!token) {
       router.replace(`/${locale}/login`);
       return;
     }
-    api
-        .get("/iran/provinces")
-        .then((r) => setProvinces(r.data.provinces))
-        .catch(() => {});
-  }, [token, router, locale]);
 
+    api.get("/iran/provinces").then((r) => setProvinces(r.data.provinces)).catch(() => {});
+
+    api
+      .get("/onboarding/status")
+      .then((r) => {
+        const status = r.data;
+        const draft: OnboardingDraft = userId ? onboardingDraft.read(userId) : {
+          name: "", familyName: "", birthYear: "", birthMonth: "", birthDay: "",
+          province: "", city: "", incomeRange: "", financialStatus: "",
+        };
+
+        // Backend wins for saved fields; draft fills unsaved optional fields
+        const mergedName = (status.name ?? status.first_name) || draft.name;
+        const mergedFamily = status.family_name || draft.familyName;
+        const mergedProvince = status.province || draft.province;
+        const mergedCity = status.city || draft.city;
+        const mergedIncome = status.income_range || draft.incomeRange;
+        const mergedStatus = status.current_financial_status || draft.financialStatus;
+
+        // Birthdate: backend status doesn't expose Jalali components — use draft only
+        setName(mergedName);
+        setFamilyName(mergedFamily);
+        setBirthYear(draft.birthYear);
+        setBirthMonth(draft.birthMonth);
+        setBirthDay(draft.birthDay);
+        setIncomeRange(mergedIncome);
+        setFinancialStatus(mergedStatus as FinancialStatusValue | "");
+
+        if (mergedProvince) {
+          // City will be restored after cities list loads
+          pendingCityRef.current = mergedCity;
+          setProvince(mergedProvince);
+        } else {
+          setCity(mergedCity);
+        }
+      })
+      .catch(() => {
+        // Network failure: fall back to draft only
+        if (userId) {
+          const draft = onboardingDraft.read(userId);
+          setName(draft.name);
+          setFamilyName(draft.familyName);
+          setBirthYear(draft.birthYear);
+          setBirthMonth(draft.birthMonth);
+          setBirthDay(draft.birthDay);
+          setIncomeRange(draft.incomeRange);
+          setFinancialStatus(draft.financialStatus as FinancialStatusValue | "");
+          if (draft.province) {
+            pendingCityRef.current = draft.city;
+            setProvince(draft.province);
+          } else {
+            setCity(draft.city);
+          }
+        }
+      })
+      .finally(() => setHydrated(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, locale, userId]);
+
+  // Load cities when province changes; restore pending city if valid
   useEffect(() => {
     queueMicrotask(() => {
       if (!province) {
@@ -58,14 +120,26 @@ export default function OnboardingProfilePage() {
         return;
       }
       api
-          .get(`/iran/cities?province=${encodeURIComponent(province)}`)
-          .then((r) => {
-            setCities(r.data.cities);
-            setCity("");
-          })
-          .catch(() => {});
+        .get(`/iran/cities?province=${encodeURIComponent(province)}`)
+        .then((r) => {
+          const loaded: string[] = r.data.cities;
+          setCities(loaded);
+          const pending = pendingCityRef.current;
+          pendingCityRef.current = "";
+          setCity(pending && loaded.includes(pending) ? pending : "");
+        })
+        .catch(() => {});
     });
   }, [province]);
+
+  // Auto-save all form fields to localStorage draft after hydration
+  useEffect(() => {
+    if (!hydrated || !userId) return;
+    onboardingDraft.save(userId, {
+      name, familyName, birthYear, birthMonth, birthDay,
+      province, city, incomeRange, financialStatus,
+    });
+  }, [hydrated, userId, name, familyName, birthYear, birthMonth, birthDay, province, city, incomeRange, financialStatus]);
 
   function jalaliToGregorian(jy: number, jm: number, jd: number): string {
     // Simple approximation: Jalali → Gregorian offset
@@ -96,9 +170,12 @@ export default function OnboardingProfilePage() {
       if (financialStatus) body.current_financial_status = financialStatus;
 
       await api.post("/onboarding/profile", body);
-      // Also update users/me for display_name
       const meRes = await api.get("/users/me");
       setUser(meRes.data);
+
+      // Clear draft — all values are now saved in backend
+      if (userId) onboardingDraft.clear(userId);
+
       router.push(`/${locale}/onboarding/agreement`);
     } catch {
       setError(t.errors.saveFailed);
