@@ -32,6 +32,36 @@ _DEDUP_WINDOW_MINUTES = 60
 # Params excluded from fingerprint (ephemeral/metadata, never affect semantic identity)
 _FINGERPRINT_EXCLUDED = {"description", "notes_json", "metadata_json", "source", "content_json", "evidence_json", "confidence"}
 
+# Generic Persian finance words stripped before semantic description comparison.
+# These words appear in planner-generated descriptions but carry no merchant identity.
+_TX_DESC_SKIP = frozenset({
+    "هزینه", "پول", "پرداخت", "بابت", "برای", "تومان", "تومن",
+    "دادم", "کردم", "خرید", "خریدم", "درآمد", "درامد",
+    "بدهی", "پرداختی", "خرج", "مبلغ",
+})
+
+# Character normalization map for transaction description comparison
+_TX_CHAR_NORM = str.maketrans({
+    "ي": "ی", "ك": "ک", "ة": "ه", "ۀ": "ه",
+    "أ": "ا", "إ": "ا", "آ": "ا",
+    "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+    "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+    "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+    "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+})
+
+
+def normalize_transaction_description(text: str) -> frozenset[str]:
+    """Extract meaningful merchant/subject tokens from a transaction description.
+
+    Strips generic Persian finance words so "اسنپ" and "هزینه اسنپ" both
+    reduce to {"اسنپ"} and are recognised as the same merchant by semantic dedup.
+    """
+    if not text:
+        return frozenset()
+    normalized = text.translate(_TX_CHAR_NORM).replace("‌", " ").lower()
+    return frozenset(t for t in normalized.split() if t not in _TX_DESC_SKIP and len(t) > 1)
+
 
 def audit_operation(
     db: Session,
@@ -214,6 +244,36 @@ class SqlExecutor:
                     summary=f"skipped duplicate future commitment (id={existing_commitment_id} already exists)",
                 )
 
+        # Semantic transaction dedup: catches the case where the planner creates one
+        # INSERT without category_id and then another INSERT with category_id but the same
+        # expense (e.g. "اسنپ" then "هزینه اسنپ" for the same 200k transport expense).
+        # The fingerprint dedup misses this because category_id changes the hash.
+        if validation.operation_type == AgentOperationType.insert and validation.table_name == "transactions":
+            try:
+                existing_tx_id = self._check_semantic_transaction_duplicate(db, user, validation.params)
+            except Exception:
+                existing_tx_id = None
+            if existing_tx_id is not None:
+                audit_operation(
+                    db,
+                    user.id,
+                    intent,
+                    step,
+                    "skipped_duplicate",
+                    f"semantic duplicate transaction already exists id={existing_tx_id}",
+                    False,
+                )
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=step.operation_type,
+                    allowed=True,
+                    executed=False,
+                    skipped_duplicate=True,
+                    operation_fingerprint=fingerprint,
+                    existing_record_id=existing_tx_id,
+                    summary=f"skipped duplicate transaction (id={existing_tx_id} already exists within dedup window)",
+                )
+
         try:
             if validation.operation_type == AgentOperationType.select:
                 rows = self._execute_select(db, user, validation)
@@ -380,6 +440,72 @@ class SqlExecutor:
                 due_matches = True
 
             if due_matches:
+                return int(candidate.id)
+
+        return None
+
+    def _check_semantic_transaction_duplicate(self, db: Session, user: User, params: dict[str, Any]) -> int | None:
+        """Return the id of an existing transaction that is semantically identical to params.
+
+        Two transaction inserts are considered duplicates when they share the same
+        user, type, amount, and date within the dedup window AND their meaningful
+        description tokens overlap significantly (subset or high Jaccard score).
+
+        This catches the planner pattern of inserting "اسنپ" in one iteration and
+        "هزینه اسنپ" with a category_id in the next — both reduce to token {"اسنپ"}.
+        """
+        tx_type_raw = str(params.get("type", "")).strip()
+        if tx_type_raw not in {"expense", "income"}:
+            return None
+        try:
+            amount = normalize_amount(params.get("amount", 0))
+        except Exception:
+            return None
+        if amount < 1000:
+            return None
+
+        tx_date = None
+        try:
+            if params.get("date"):
+                tx_date = normalize_date(params["date"])
+        except Exception:
+            pass
+
+        tx_type = TransactionType.income if tx_type_raw == "income" else TransactionType.expense
+        window_start = datetime.utcnow() - timedelta(minutes=_DEDUP_WINDOW_MINUTES)
+
+        query = (
+            db.query(Transaction)
+            .filter(
+                Transaction.user_id == user.id,
+                Transaction.type == tx_type,
+                Transaction.amount == amount,
+                Transaction.created_at >= window_start,
+            )
+        )
+        if tx_date is not None:
+            query = query.filter(Transaction.date == tx_date)
+
+        candidates = query.all()
+        if not candidates:
+            return None
+
+        incoming_tokens = normalize_transaction_description(str(params.get("description") or ""))
+
+        for candidate in candidates:
+            existing_tokens = normalize_transaction_description(str(candidate.description or ""))
+
+            # No meaningful tokens in either — amount/type/date match is sufficient
+            if not incoming_tokens or not existing_tokens:
+                return int(candidate.id)
+
+            # Subset: "اسنپ" ⊆ "هزینه اسنپ" or vice versa → same merchant
+            if incoming_tokens.issubset(existing_tokens) or existing_tokens.issubset(incoming_tokens):
+                return int(candidate.id)
+
+            # High token overlap → same merchant
+            jaccard = len(incoming_tokens & existing_tokens) / len(incoming_tokens | existing_tokens)
+            if jaccard >= 0.6:
                 return int(candidate.id)
 
         return None

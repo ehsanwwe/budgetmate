@@ -101,6 +101,9 @@ export default function ChatPage() {
   const animFrameRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  // Synchronous guard against double-submit (React state updates are async,
+  // so checking `streaming` alone is not enough for rapid double presses).
+  const sendingRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -153,7 +156,8 @@ export default function ChatPage() {
 
   async function sendMessage(text?: string) {
     const userMsg = (text || input).trim();
-    if (!userMsg || streaming) return;
+    if (!userMsg || streaming || sendingRef.current) return;
+    sendingRef.current = true;
 
     // Generate idempotency key — same key reused on stream + fallback POST.
     // Backend uses this to prevent duplicate DB writes on retry.
@@ -235,6 +239,7 @@ export default function ChatPage() {
     } finally {
       setStreaming(false);
       setStreamingText("");
+      sendingRef.current = false;
     }
   }
 

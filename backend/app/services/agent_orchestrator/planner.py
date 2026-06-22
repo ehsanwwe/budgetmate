@@ -96,6 +96,17 @@ EXAMPLES (must classify correctly):
   "تور ثبت‌نام کردم، الان ۲۰ میلیون دادم، ۴۰ میلیونش ماه بعده" → transaction (20M) + future_commitment (40M)
   "کادو خریدم ۲۵ میلیون" → transaction
 
+ONE TRANSACTION INSERT PER MESSAGE — CRITICAL:
+For a simple completed expense or income message, plan EXACTLY ONE INSERT INTO transactions.
+Do NOT insert a transaction without category_id in one iteration and then another transaction with category_id in the next iteration.
+Do NOT create two INSERT steps with different descriptions for the same expense (e.g. "اسنپ" then "هزینه اسنپ").
+If a category lookup is needed:
+  1. SELECT categories first (one iteration)
+  2. In the NEXT iteration, create EXACTLY ONE transaction INSERT using the category_id from the SELECT result
+  3. Never insert a placeholder uncategorized transaction before the category SELECT completes
+Wrong: [SELECT categories] → [INSERT description="اسنپ"] → [INSERT description="هزینه اسنپ" category_id=X]
+Correct: [SELECT categories] → [INSERT description="هزینه اسنپ" category_id=X]
+
 GOAL UPDATE RULE:
 When current message requests a goal deadline change:
   1. SELECT goals first
