@@ -44,6 +44,23 @@ def local_today() -> date:
 
 
 def parse_relative_date(value: object | None) -> date:
+    """Deterministic utility parser for trivial date phrases and ISO strings.
+
+    FALLBACK / UTILITY ONLY — do not use as the primary semantic date resolver.
+    Natural-language date phrases for goal deadlines and future_commitments
+    must go through LLMDateResolver (llm_date_resolver.py) so the LLM can
+    understand unlimited phrasings without hardcoded lists.
+
+    This function is kept for:
+    - ISO string parsing ("2025-06-15")
+    - Trivial literals: "امروز", "دیروز", "فردا"
+    - Internal utility helpers (local_today, local_week_range, etc.)
+    - Advisory approximate calculations (_months_between in goal_intake.py)
+
+    Returns local_today() as a fallback for unrecognized phrases. That
+    fallback is acceptable for transaction dates but NOT for goal/commitment
+    deadlines (where LLMDateResolver must be used instead).
+    """
     if isinstance(value, date):
         return value
     if not value:

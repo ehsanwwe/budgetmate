@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp } from "lucide-react";
 import ChatEmptyState from "@/components/chat/ChatEmptyState";
 
-interface Message { id?: number; role: "user" | "assistant"; content: string; }
+interface Message { id?: number; localId?: string; role: "user" | "assistant"; content: string; }
 
 const BAR_COUNT = 28;
 
@@ -154,8 +154,13 @@ export default function ChatPage() {
   async function sendMessage(text?: string) {
     const userMsg = (text || input).trim();
     if (!userMsg || streaming) return;
+
+    // Generate idempotency key — same key reused on stream + fallback POST.
+    // Backend uses this to prevent duplicate DB writes on retry.
+    const clientMsgId = crypto.randomUUID();
+
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    setMessages((prev) => [...prev, { role: "user", content: userMsg, localId: clientMsgId }]);
     setStreaming(true);
     setStreamingText("");
 
@@ -164,7 +169,8 @@ export default function ChatPage() {
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-      const res = await fetch(`${apiBase}/chat/stream?content=${encodeURIComponent(userMsg)}`, {
+      const streamUrl = `${apiBase}/chat/stream?content=${encodeURIComponent(userMsg)}&client_message_id=${encodeURIComponent(clientMsgId)}`;
+      const res = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -212,7 +218,8 @@ export default function ChatPage() {
     } catch {
       if (!backendResponded) {
         try {
-          const res = await api.post("/chat/message", { content: userMsg });
+          // Reuse the same clientMsgId so backend idempotency prevents a double write
+          const res = await api.post("/chat/message", { content: userMsg, client_message_id: clientMsgId });
           setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || t(dict, "chat.fallback") }]);
         } catch {
           toast.error(t(dict, "chat.errorSend"));
@@ -420,7 +427,7 @@ export default function ChatPage() {
         {/* Messages */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
           {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} />
+              <MessageBubble key={msg.localId || msg.id || i} message={msg} />
           ))}
           {streaming && streamingText && (
               <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />

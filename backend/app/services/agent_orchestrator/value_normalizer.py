@@ -127,6 +127,14 @@ def _parse_persian_number(text: str) -> int | None:
 
 
 def normalize_date(value: Any | None) -> date:
+    """Normalize a date value for fingerprinting / deduplication purposes only.
+
+    NOT for semantic date resolution of natural-language goal deadlines or
+    future_commitment due dates. For those, use LLMDateResolver.
+
+    Falls back to local_today() for unrecognized phrases — this is acceptable
+    for fingerprint normalization but would be wrong for setting actual deadlines.
+    """
     if isinstance(value, date):
         return value
     text = normalize_text(value)

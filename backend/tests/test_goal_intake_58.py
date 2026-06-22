@@ -209,7 +209,22 @@ def test_add_choice_inserts_goal_exactly_once(monkeypatch, db):
     """After decision gate, 'اضافه کن' → exactly one goal inserted."""
     _make_intent(db, 1, "انگشتر طلا", amount=100_000_000, date_text="آخر سال", state=STATE_AWAITING_CHOICE)
 
-    # No LLM needed for keyword-based choice classification ("اضافه کن")
+    async def _fake_classify(messages, **kwargs):
+        return "add"
+
+    async def _fake_date_llm(messages, **kwargs):
+        return json.dumps({
+            "raw_text": "آخر سال",
+            "resolved_date": "2026-12-31",
+            "confidence": 0.9,
+            "date_kind": "deadline",
+            "interpretation_fa": "آخر سال میلادی",
+            "needs_confirmation": False,
+        })
+
+    monkeypatch.setattr("app.services.agent_orchestrator.goal_intake.get_ai_chat_completion", _fake_classify)
+    monkeypatch.setattr("app.services.agent_orchestrator.llm_date_resolver.get_ai_chat_completion", _fake_date_llm)
+
     gate = GoalIntakeGate()
     response = asyncio.run(gate.process(db, u(db), "اضافه کن", None, {}))
     assert response is not None
@@ -231,6 +246,22 @@ def test_add_choice_does_not_duplicate_goal(monkeypatch, db):
     """Sending 'اضافه کن' twice does not create two goals."""
     _make_intent(db, 1, "انگشتر طلا", amount=100_000_000, date_text="آخر سال", state=STATE_AWAITING_CHOICE)
 
+    async def _fake_classify(messages, **kwargs):
+        return "add"
+
+    async def _fake_date_llm(messages, **kwargs):
+        return json.dumps({
+            "raw_text": "آخر سال",
+            "resolved_date": "2026-12-31",
+            "confidence": 0.9,
+            "date_kind": "deadline",
+            "interpretation_fa": "آخر سال میلادی",
+            "needs_confirmation": False,
+        })
+
+    monkeypatch.setattr("app.services.agent_orchestrator.goal_intake.get_ai_chat_completion", _fake_classify)
+    monkeypatch.setattr("app.services.agent_orchestrator.llm_date_resolver.get_ai_chat_completion", _fake_date_llm)
+
     gate = GoalIntakeGate()
     response1 = asyncio.run(gate.process(db, u(db), "اضافه کن", None, {}))
     assert response1 is not None
@@ -250,8 +281,13 @@ def test_consult_choice_does_not_insert_goal(monkeypatch, db):
     """After decision gate, 'مشاوره بده' → no goal inserted, advisory returned."""
     _make_intent(db, 1, "انگشتر طلا", amount=100_000_000, date_text="آخر سال", state=STATE_AWAITING_CHOICE)
 
+    # _classify_choice now always calls LLM (LLM-first architecture).
+    # Use a sequential mock: first call = classify result, second call = advisory text.
+    call_count = [0]
     async def _fake_llm(messages, **kwargs):
-        # Advisory response (non-JSON)
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "consult"  # classification
         return "با توجه به وضعیت مالی فعلیت، خرید انگشتر طلا نیاز به بررسی دارد. آیا این خرید برایت ضروری است؟"
 
     monkeypatch.setattr("app.services.agent_orchestrator.goal_intake.get_ai_chat_completion", _fake_llm)
@@ -417,8 +453,12 @@ def test_advisory_uses_finance_context(monkeypatch, db):
     _make_intent(db, 1, "لپتاپ", amount=200_000_000, date_text="۶ ماه دیگه", state=STATE_AWAITING_CHOICE)
 
     received_messages: list = []
+    call_count = [0]
 
     async def _fake_llm(messages, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "consult"  # _classify_choice call
         received_messages.extend(messages)
         return "با توجه به بودجه باقی‌مانده‌ات، این خرید قابل مدیریت است. آیا اولویتت در حال حاضر این لپتاپ است؟"
 
@@ -446,8 +486,12 @@ def test_advisory_no_fake_numbers(monkeypatch, db):
     _make_intent(db, 1, "رینگ اسپورت", amount=20_000_000, date_text="ماه آینده", state=STATE_AWAITING_CHOICE)
 
     captured_content = []
+    call_count = [0]
 
     async def _fake_llm(messages, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return "consult"  # _classify_choice call
         # Capture what the advisory prompt receives
         for m in messages:
             captured_content.append(m.get("content", ""))

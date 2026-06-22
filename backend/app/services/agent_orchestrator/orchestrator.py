@@ -9,9 +9,10 @@ from app.core.config import settings
 from app.models.user import User
 from app.services.agent_orchestrator.context_builder import build_agent_context
 from app.services.agent_orchestrator.db_world import render_db_world
-from app.services.agent_orchestrator.goal_intake import GoalIntakeGate
+from app.services.agent_orchestrator.goal_intake import GOAL_INTENT_TYPE, GoalIntakeGate
 from app.services.agent_orchestrator.planner import AgentPlanner
 from app.services.agent_orchestrator.response_composer import ResponseComposer
+from app.services.agent_orchestrator.semantic_interpreter import SemanticInterpreter, SemanticResult
 from app.services.agent_orchestrator.sql_executor import SqlExecutor, audit_operation
 from app.services.agent_orchestrator.sql_validator import SqlValidator
 from app.services.agent_orchestrator.types import (
@@ -79,20 +80,37 @@ class AgentOrchestrator:
 
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
-
-        # Goal intake gate runs first — intercepts goal-like messages and manages
-        # the decision gate (collect missing info → add vs consult → advisory or insert).
-        gate_response = await self._gate.process(
-            db, user, user_message, history, finance_context
-        )
-        if gate_response is not None:
-            return gate_response
         if chat_mode:
             finance_context.setdefault("user", {})["chat_mode"] = chat_mode
 
+        # SemanticInterpreter runs first — one LLM call that understands the full
+        # message context so gate and planner can use the result rather than each
+        # making their own classification calls.
+        pending_payload = self._get_pending_intent_payload(db, user)
+        semantic: SemanticResult = await SemanticInterpreter().interpret(
+            user_message=user_message,
+            history=history,
+            pending_intent_payload=pending_payload,
+            finance_context=finance_context,
+        )
+
+        # Goal intake gate runs next — intercepts goal-like messages and manages
+        # the decision gate (collect missing info → add vs consult → advisory or insert).
+        gate_response = await self._gate.process(
+            db, user, user_message, history, finance_context, semantic=semantic
+        )
+        if gate_response is not None:
+            return gate_response
+
         all_results: list[AgentExecutionResult] = []
         execution_payloads: list[dict[str, Any]] = []
-        plan = await self.planner.plan(db_world, user_message, finance_context, history=history)
+        plan = await self.planner.plan(
+            db_world,
+            user_message,
+            finance_context,
+            history=history,
+            semantic_interpretation=semantic.raw if semantic else None,
+        )
         last_action_plan: AgentPlan | None = None
         last_plan: AgentPlan = plan
 
@@ -175,6 +193,7 @@ class AgentOrchestrator:
                 finance_context,
                 history=history,
                 execution_results=execution_payloads,
+                semantic_interpretation=semantic.raw if semantic else None,
             )
             if had_repairable_failure:
                 continue
@@ -236,6 +255,23 @@ class AgentOrchestrator:
             ) is not None
         except Exception:
             return False
+
+    def _get_pending_intent_payload(self, db: Session, user: User) -> dict | None:
+        try:
+            from app.models.agent_idempotency import PendingAgentIntent
+            intent = (
+                db.query(PendingAgentIntent)
+                .filter(
+                    PendingAgentIntent.user_id == user.id,
+                    PendingAgentIntent.intent_type == GOAL_INTENT_TYPE,
+                    PendingAgentIntent.status == "pending",
+                )
+                .order_by(PendingAgentIntent.updated_at.desc())
+                .first()
+            )
+            return dict(intent.payload_json) if intent else None
+        except Exception:
+            return None
 
     def _mark_processing(self, db: Session, user_id: int, client_message_id: str) -> None:
         try:

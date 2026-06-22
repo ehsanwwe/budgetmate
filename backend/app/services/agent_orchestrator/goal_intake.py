@@ -4,13 +4,23 @@ State machine for goal-like purchase/saving intents:
 
   collecting_amount → collecting_target_date → awaiting_user_choice → consumed
                                                                     ↘ consultation_active → consumed
+
+ARCHITECTURE NOTE:
+GoalIntakeGate is a thin pending-state manager. Semantic routing decisions
+(cancel, bypass, intent classification) come from SemanticInterpreter, which is
+called by the orchestrator BEFORE this gate. The gate uses the pre-computed
+SemanticResult instead of its own keyword lists as the primary decision maker.
+
+_CANCEL_KEYWORDS is kept as a tiny emergency guard for when semantic is unavailable.
+LLM calls inside the gate are for data extraction (amount, date) and advisory, not
+for primary intent classification.
 """
 from __future__ import annotations
 
 import json
 import logging
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
 
@@ -18,10 +28,14 @@ from app.models.agent_idempotency import PendingAgentIntent
 from app.models.goal import Goal
 from app.models.user import User
 from app.services.agent_orchestrator.date_utils import local_today, parse_relative_date
+from app.services.agent_orchestrator.llm_date_resolver import LLMDateResolver
 from app.services.agent_orchestrator.types import AgentFinalResponse
 from app.services.agent_orchestrator.value_normalizer import normalize_amount
 from app.services.ai import LLMProviderError, get_ai_chat_completion
 from app.services.agent_orchestrator.persian_utils import to_persian_digits
+
+if TYPE_CHECKING:
+    from app.services.agent_orchestrator.semantic_interpreter import SemanticResult
 
 logger = logging.getLogger(__name__)
 
@@ -89,28 +103,6 @@ JSON:
 amount: مبلغ به تومان (عدد صحیح) یا null
 target_date_text: متن تاریخ (مثل «آخر سال»، «ماه بعد»، «تا خرداد») یا null"""
 
-_CHOICE_SYSTEM = "تشخیص انتخاب کاربر: ثبت هدف یا مشاوره. فقط یک کلمه برگردان."
-
-_CHOICE_USER_TMPL = """کاربر باید بین ثبت هدف مالی یا مشاوره مالی انتخاب کند.
-
-پیام کاربر: {message}
-
-فقط یکی از این چهار را برگردان (یک کلمه):
-- add      — اگر کاربر می‌خواهد ثبت/اضافه کند
-- consult  — اگر کاربر می‌خواهد مشاوره بگیرد
-- both     — اگر کاربر می‌خواهد هر دو (هر دو، جفتش، هردو، هر دو تا)
-- ambiguous — اگر مشخص نیست
-
-کلیدواژه‌های ثبت: اضافه کن، ثبت کن، بله، آره، بزن، هدفش کن، باشه ثبت، بزن تو، ok
-کلیدواژه‌های مشاوره: مشاوره، بررسی، به نظرت، منطقی، می‌صرفه، راهنمایی، نه اول، صبر کن، فکر کن
-کلیدواژه‌های هر دو: هر دو، هردو، جفتش، هر دو تا، both"""
-
-_CANCEL_KEYWORDS = {
-    "ولش کن", "ول کن", "بی‌خیال", "بیخیال", "منصرف شدم", "نمی‌خوام",
-    "نمیخوام", "فراموشش کن", "فراموش کن", "لغو", "کنسل", "cancel",
-    "نه ولش", "بذار بره", "ولم کن", "بیخیالش",
-}
-
 _ADVISORY_SYSTEM = """شما Personal CFO (مدیر مالی شخصی) هستید.
 چهار نقش دارید: مدیر مالی، روانشناس مالی، برنامه‌ریز مالی بلندمدت، دستیار تصمیم مالی.
 
@@ -122,6 +114,14 @@ _ADVISORY_SYSTEM = """شما Personal CFO (مدیر مالی شخصی) هستی�
 - یک سوال مفید و کوتاه در پایان بپرس
 - هدف را ثبت نکن؛ فقط مشاوره بده"""
 
+# Emergency cancel guard — used ONLY when SemanticInterpreter result is unavailable.
+# Do not expand this list. Primary cancel detection is SemanticResult.should_cancel_pending_flow.
+_CANCEL_KEYWORDS_EMERGENCY = {
+    "ولش کن", "ول کن", "بی‌خیال", "بیخیال", "منصرف شدم", "نمی‌خوام",
+    "نمیخوام", "فراموشش کن", "فراموش کن", "لغو", "کنسل", "cancel",
+    "نه ولش", "بذار بره", "ولم کن", "بیخیالش",
+}
+
 
 def _fmt_toman(amount: int | None) -> str:
     if not amount:
@@ -130,10 +130,11 @@ def _fmt_toman(amount: int | None) -> str:
 
 
 def _months_between(today: date, date_text: str | None) -> int | None:
-    """Estimate months between today and target_date_text."""
+    """Estimate months between today and target_date_text (for advisory only)."""
     if not date_text:
         return None
     try:
+        # Uses parse_relative_date only as an approximation for advisory display.
         target = parse_relative_date(date_text)
         delta_days = (target - today).days
         if delta_days <= 0:
@@ -150,6 +151,9 @@ class GoalIntakeGate:
 
     Returns AgentFinalResponse when it handles the message.
     Returns None when the message should pass through to the main orchestrator.
+
+    Routing decisions (cancel, bypass, goal_question detection) use the
+    SemanticResult from SemanticInterpreter. Keyword lists are emergency backups.
     """
 
     async def process(
@@ -159,39 +163,101 @@ class GoalIntakeGate:
         user_message: str,
         history: list[dict] | None,
         finance_context: dict,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse | None:
-        # 1. Active pending intent → handle via state machine
+        # 1. Active pending intent → routing through semantic, then state machine
         active_intent = self._get_active_intent(db, user)
         if active_intent:
+            # Semantic-first routing (requires LLM result from orchestrator)
+            if semantic is not None:
+                if semantic.should_cancel_pending_flow:
+                    self._cancel_stale_intents(db, user)
+                    return AgentFinalResponse(
+                        message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                        metadata={"goal_intake_state": STATE_CANCELLED},
+                    )
+                # User is asking about an existing goal, not answering our question
+                if semantic.user_intent == "goal_question":
+                    # Pass through so orchestrator/planner can answer from saved goals
+                    return None
+                # Clearly unrelated message — pass through
+                if semantic.should_bypass_goal_intake:
+                    return None
+                if semantic.user_intent in {"expense", "income", "future_commitment"}:
+                    # User registered a different transaction; cancel stale intent
+                    self._cancel_stale_intents(db, user)
+                    return None
+            else:
+                # Emergency keyword guard when semantic unavailable
+                if self._is_cancellation_emergency(user_message):
+                    self._cancel_stale_intents(db, user)
+                    return AgentFinalResponse(
+                        message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                        metadata={"goal_intake_state": STATE_CANCELLED},
+                    )
+
             return await self._handle_active_intent(
-                db, user, user_message, active_intent, history, finance_context
+                db, user, user_message, active_intent, history, finance_context, semantic=semantic
             )
 
         # 2. No active intent → detect if goal-like
+        # Use semantic intent if available to avoid an extra LLM detection call
+        if semantic is not None:
+            intent_str = semantic.user_intent
+            if intent_str in {
+                "expense", "income", "future_commitment", "explicit_goal_add",
+                "goal_question", "advice_question", "budget_question",
+                "cancel_flow", "other", "answer_pending_question",
+            }:
+                return None  # Pass through to orchestrator
+
+            if intent_str == "goal_desire":
+                # Extract item title — try semantic first, fall back to LLM detection
+                item_title = semantic.target_item or ""
+                if not item_title:
+                    detection = await self._detect(user_message)
+                    if not detection:
+                        return None
+                    item_title = str(detection.get("item_title") or "").strip()
+                if not item_title:
+                    return None
+
+                amount = semantic.money_amount
+                target_date_text = semantic.date_raw_text
+                if amount is None or target_date_text is None:
+                    # Fill gaps from detection if needed
+                    detection = await self._detect(user_message)
+                    if detection:
+                        if amount is None:
+                            amount = detection.get("amount")
+                        if target_date_text is None:
+                            target_date_text = detection.get("target_date_text")
+
+                self._cancel_stale_intents(db, user)
+                return self._start_intake(db, user, user_message, item_title, amount, target_date_text)
+
+            # invalid_both_choice or unknown — pass through
+            return None
+
+        # No semantic — fall back to LLM detection (original behavior)
         detection = await self._detect(user_message)
         if not detection:
             return None
 
         if detection.get("is_commitment") or detection.get("is_transaction"):
-            return None  # commitment / transaction → pass to orchestrator
-
+            return None
         if not detection.get("is_goal_like"):
-            return None  # not goal-like → pass through
-
+            return None
         if detection.get("is_explicit_add"):
-            return None  # explicit "add goal with all details" → let orchestrator insert directly
+            return None
 
-        # 3. Goal-like (non-explicit) → start intake
         item_title = str(detection.get("item_title") or "").strip()
         if not item_title:
-            return None  # can't extract title → pass through
+            return None
 
         amount: int | None = detection.get("amount")
         target_date_text: str | None = detection.get("target_date_text")
-
-        # Cancel stale intents from previous sessions
         self._cancel_stale_intents(db, user)
-
         return self._start_intake(db, user, user_message, item_title, amount, target_date_text)
 
     # ── Active-intent handlers ────────────────────────────────────────────────
@@ -204,22 +270,25 @@ class GoalIntakeGate:
         intent: PendingAgentIntent,
         history: list[dict] | None,
         finance_context: dict,
+        *,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse | None:
         state = intent.payload_json.get("state")
 
         if state == STATE_COLLECTING_AMOUNT:
-            return await self._collect_amount(db, user, user_message, intent, history)
+            return await self._collect_amount(db, user, user_message, intent, history, semantic=semantic)
         if state == STATE_COLLECTING_DATE:
-            return await self._collect_date(db, user, user_message, intent, history)
+            return await self._collect_date(db, user, user_message, intent, history, semantic=semantic)
         if state == STATE_AWAITING_CHOICE:
-            return await self._awaiting_choice(db, user, user_message, intent, history, finance_context)
+            return await self._awaiting_choice(db, user, user_message, intent, history, finance_context, semantic=semantic)
         if state == STATE_CONSULTATION:
-            return await self._consultation(db, user, user_message, intent, history, finance_context)
+            return await self._consultation(db, user, user_message, intent, history, finance_context, semantic=semantic)
         return None
 
-    def _is_cancellation(self, text: str) -> bool:
+    def _is_cancellation_emergency(self, text: str) -> bool:
+        """Emergency keyword guard — only for when SemanticInterpreter result is unavailable."""
         cleaned = text.strip().lower().replace("‌", " ")
-        return any(kw in cleaned for kw in _CANCEL_KEYWORDS)
+        return any(kw in cleaned for kw in _CANCEL_KEYWORDS_EMERGENCY)
 
     def _amount_from_history(self, history: list[dict] | None, item_title: str) -> int | None:
         """Scan recent history for an amount mentioned near the goal title."""
@@ -237,46 +306,52 @@ class GoalIntakeGate:
         return None
 
     async def _collect_amount(
-        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent,
+        self,
+        db: Session,
+        user: User,
+        user_message: str,
+        intent: PendingAgentIntent,
         history: list[dict] | None = None,
+        *,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse | None:
         payload = intent.payload_json
         item_title = payload.get("item_title", "آن خرید")
 
-        # Check cancellation first
-        if self._is_cancellation(user_message):
+        # Semantic-first cancel check (emergency keyword fallback when semantic unavailable)
+        if (semantic is not None and semantic.should_cancel_pending_flow) or \
+           (semantic is None and self._is_cancellation_emergency(user_message)):
             self._cancel_stale_intents(db, user)
             return AgentFinalResponse(
                 message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
                 metadata={"goal_intake_state": STATE_CANCELLED},
             )
 
-        # User claims they already said it — check history
-        if any(kw in user_message for kw in ["قبلاً گفتم", "قبلا گفتم", "گفتم", "گفته بودم", "همین چت"]):
-            hist_amount = self._amount_from_history(history, item_title)
-            if hist_amount is not None:
-                extraction = await self._extract_values(user_message)
-                date_text = extraction.get("target_date_text") or payload.get("target_date_text")
-                if date_text:
-                    self._update_intent(db, intent, {"target_amount": hist_amount, "target_date_text": date_text}, STATE_AWAITING_CHOICE)
-                    return self._ask_add_or_consult(item_title, hist_amount, date_text, intent.id)
-                self._update_intent(db, intent, {"target_amount": hist_amount}, STATE_COLLECTING_DATE)
-                return AgentFinalResponse(
-                    message="تا چه زمانی می‌خواهی به این خرید برسی؟",
-                    metadata={"goal_intake_state": STATE_COLLECTING_DATE, "intent_id": intent.id},
-                )
+        # Try to get amount from semantic interpreter first (avoids extra LLM call)
+        amount: int | None = None
+        if semantic is not None:
+            amount = semantic.money_amount
 
-        amount = self._try_extract_amount(user_message)
+        # User claims they already said it — check history
+        if amount is None and any(kw in user_message for kw in ["قبلاً گفتم", "قبلا گفتم", "گفتم", "گفته بودم", "همین چت"]):
+            amount = self._amount_from_history(history, item_title)
+
+        # Fall back to direct extraction from message
+        if amount is None:
+            amount = self._try_extract_amount(user_message)
         if amount is None:
             extraction = await self._extract_values(user_message)
             amount = extraction.get("amount")
 
         if amount is None:
-            # Check if clearly unrelated (commitment / transaction)
+            # Check if user switched topics
+            if semantic is not None and semantic.user_intent in {"expense", "income", "future_commitment"}:
+                self._cancel_stale_intents(db, user)
+                return None
             detection = await self._detect(user_message)
             if detection and (detection.get("is_commitment") or detection.get("is_transaction")):
                 self._cancel_stale_intents(db, user)
-                return None  # pass through
+                return None
             if detection and detection.get("is_goal_like") and detection.get("item_title"):
                 new_title = str(detection.get("item_title") or "").strip()
                 if new_title and new_title.lower() != (payload.get("item_title") or "").lower():
@@ -290,8 +365,13 @@ class GoalIntakeGate:
             )
 
         # Got amount — check if date also in same message
-        extraction = await self._extract_values(user_message)
-        date_text = extraction.get("target_date_text")
+        date_text: str | None = None
+        if semantic is not None:
+            date_text = semantic.date_raw_text
+        if not date_text:
+            extraction = await self._extract_values(user_message)
+            date_text = extraction.get("target_date_text")
+
         if date_text:
             self._update_intent(db, intent, {"target_amount": amount, "target_date_text": date_text}, STATE_AWAITING_CHOICE)
             return self._ask_add_or_consult(payload.get("item_title", item_title), amount, date_text, intent.id)
@@ -303,22 +383,37 @@ class GoalIntakeGate:
         )
 
     async def _collect_date(
-        self, db: Session, user: User, user_message: str, intent: PendingAgentIntent,
+        self,
+        db: Session,
+        user: User,
+        user_message: str,
+        intent: PendingAgentIntent,
         history: list[dict] | None = None,
+        *,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse | None:
         payload = intent.payload_json
 
-        if self._is_cancellation(user_message):
+        if (semantic is not None and semantic.should_cancel_pending_flow) or \
+           (semantic is None and self._is_cancellation_emergency(user_message)):
             self._cancel_stale_intents(db, user)
             return AgentFinalResponse(
                 message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
                 metadata={"goal_intake_state": STATE_CANCELLED},
             )
 
-        extraction = await self._extract_values(user_message)
-        date_text = extraction.get("target_date_text")
+        # Extract date text — semantic first, then LLM extraction
+        date_text: str | None = None
+        if semantic is not None:
+            date_text = semantic.date_raw_text
+        if not date_text:
+            extraction = await self._extract_values(user_message)
+            date_text = extraction.get("target_date_text")
 
         if date_text is None:
+            if semantic is not None and semantic.user_intent in {"expense", "income", "future_commitment"}:
+                self._cancel_stale_intents(db, user)
+                return None
             detection = await self._detect(user_message)
             if detection and (detection.get("is_commitment") or detection.get("is_transaction")):
                 self._cancel_stale_intents(db, user)
@@ -341,20 +436,35 @@ class GoalIntakeGate:
         intent: PendingAgentIntent,
         history: list[dict] | None,
         finance_context: dict,
+        *,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse:
         payload = intent.payload_json
 
-        if self._is_cancellation(user_message):
+        # Cancel check — semantic primary, keyword emergency backup
+        if (semantic is not None and semantic.should_cancel_pending_flow) or \
+           (semantic is None and self._is_cancellation_emergency(user_message)):
             self._cancel_stale_intents(db, user)
             return AgentFinalResponse(
                 message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
                 metadata={"goal_intake_state": STATE_CANCELLED},
             )
 
+        # Invalid "both" choice — semantic primary
+        if semantic is not None and semantic.user_intent == "invalid_both_choice":
+            return AgentFinalResponse(
+                message=(
+                    "متوجه‌ام، اما برای ادامه‌ی این مرحله نمی‌تونم هم‌زمان هر دو مسیر رو شروع کنم. "
+                    "اول باید مشخص کنی می‌خوای این مورد به‌عنوان هدف ثبت بشه یا فعلاً فقط مشاوره مالی بگیری. "
+                    "بعد از انجام یکی، می‌تونیم سراغ مسیر بعدی هم بریم."
+                ),
+                metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
+            )
+
         choice = await self._classify_choice(user_message)
 
         if choice == "add":
-            return self._insert_goal_from_intent(db, user, intent, payload)
+            return await self._insert_goal_from_intent(db, user, intent, payload, user_message, history)
         if choice == "consult":
             self._update_intent(db, intent, {}, STATE_CONSULTATION)
             advisory = await self._generate_advisory(user_message, payload, finance_context, history)
@@ -385,11 +495,22 @@ class GoalIntakeGate:
         intent: PendingAgentIntent,
         history: list[dict] | None,
         finance_context: dict,
+        *,
+        semantic: "SemanticResult | None" = None,
     ) -> AgentFinalResponse:
         payload = intent.payload_json
+
+        if (semantic is not None and semantic.should_cancel_pending_flow) or \
+           (semantic is None and self._is_cancellation_emergency(user_message)):
+            self._cancel_stale_intents(db, user)
+            return AgentFinalResponse(
+                message="باشه، این مورد رو کنار گذاشتم. چیزی ثبت نشد.",
+                metadata={"goal_intake_state": STATE_CANCELLED},
+            )
+
         choice = await self._classify_choice(user_message)
         if choice == "add":
-            return self._insert_goal_from_intent(db, user, intent, payload)
+            return await self._insert_goal_from_intent(db, user, intent, payload, user_message, history)
 
         advisory = await self._generate_advisory(user_message, payload, finance_context, history)
         return AgentFinalResponse(
@@ -399,12 +520,18 @@ class GoalIntakeGate:
 
     # ── Goal insertion ────────────────────────────────────────────────────────
 
-    def _insert_goal_from_intent(
-        self, db: Session, user: User, intent: PendingAgentIntent, payload: dict
+    async def _insert_goal_from_intent(
+        self,
+        db: Session,
+        user: User,
+        intent: PendingAgentIntent,
+        payload: dict,
+        user_message: str = "",
+        history: list[dict] | None = None,
     ) -> AgentFinalResponse:
         item_title = str(payload.get("item_title") or "").strip()
         target_amount = payload.get("target_amount")
-        target_date_text = payload.get("target_date_text")
+        target_date_text: str | None = payload.get("target_date_text")
 
         if not item_title or not target_amount:
             return AgentFinalResponse(
@@ -424,13 +551,40 @@ class GoalIntakeGate:
                 metadata={"goal_intake_state": STATE_CONSUMED, "existing_goal_id": existing_id},
             )
 
-        # Parse deadline
+        # Resolve deadline through LLMDateResolver (not parse_relative_date).
+        # For goal deadlines, never silently fallback to today on unknown phrases.
         deadline: date | None = None
         if target_date_text:
-            try:
-                deadline = parse_relative_date(target_date_text)
-            except Exception:
-                deadline = None
+            resolver = LLMDateResolver()
+            resolution = await resolver.resolve(
+                raw_date_text=target_date_text,
+                user_message=user_message or payload.get("source_message", ""),
+                history=history,
+                current_date=local_today(),
+                financial_context_type="goal_deadline",
+                pending_intent=payload,
+            )
+            if resolution.resolved_date and not resolution.needs_confirmation:
+                deadline = resolution.resolved_date
+            elif resolution.resolved_date and resolution.confidence >= 0.65:
+                # Moderate confidence — accept but log
+                deadline = resolution.resolved_date
+                logger.info(
+                    "goal_intake accepting moderate-confidence date %s (conf=%.2f) for %r",
+                    resolution.resolved_date,
+                    resolution.confidence,
+                    item_title,
+                )
+            else:
+                # Low confidence or needs confirmation — ask user before writing
+                self._consume_intent(db, intent)  # consume to avoid repeat asks
+                return AgentFinalResponse(
+                    message=(
+                        f"مطمئن نشدم تاریخ هدف «{item_title}» رو درست فهمیدم. "
+                        f"لطفاً تاریخ دقیق‌تری بده — مثلاً «آخر خرداد» یا «شش ماه دیگه»."
+                    ),
+                    metadata={"goal_intake_state": STATE_COLLECTING_DATE, "intent_id": intent.id},
+                )
 
         goal = Goal(
             user_id=user.id,
@@ -614,26 +768,27 @@ class GoalIntakeGate:
             return {}
 
     async def _classify_choice(self, user_message: str) -> str:
-        """Classify user's add/consult choice. Returns 'add', 'consult', or 'ambiguous'."""
-        # Fast keyword-based classification first
-        text = user_message.strip().lower().replace("‌", " ")
-        both_kw = ["هر دو", "هردو", "جفتش", "هر دو تا", "both"]
-        add_kw = ["اضافه کن", "ثبت کن", "بزن تو اهداف", "هدفش کن", "ثبتش کن",
-                  "به هدف", "بزن", "آره", "بله", "ok", "اوکی", "باشه ثبت"]
-        consult_kw = ["مشاوره", "بررسی کن", "بررسیش کن", "به نظرت", "منطقیه",
-                      "می‌صرفه", "میصرفه", "راهنمایی", "نه اول", "اول مشاوره",
-                      "نظرت", "صبر کن", "فکر کن"]
-        if any(kw in text for kw in both_kw):
-            return "both"
-        if any(kw in text for kw in add_kw):
-            return "add"
-        if any(kw in text for kw in consult_kw):
-            return "consult"
+        """Classify user's add/consult/both choice via LLM.
 
-        # LLM fallback for ambiguous cases
+        Uses LLM directly — keyword lists are not the primary classifier since
+        users express choices in unlimited ways. The LLM prompt includes examples.
+        """
+        system = "تشخیص انتخاب کاربر: ثبت هدف یا مشاوره. فقط یک کلمه برگردان."
+        user_content = (
+            f"کاربر باید بین ثبت هدف مالی یا مشاوره مالی انتخاب کند.\n\n"
+            f"پیام کاربر: {user_message}\n\n"
+            "فقط یکی از این چهار را برگردان (یک کلمه):\n"
+            "- add      — اگر کاربر می‌خواهد ثبت/اضافه کند\n"
+            "- consult  — اگر کاربر می‌خواهد مشاوره بگیرد\n"
+            "- both     — اگر کاربر می‌خواهد هر دو\n"
+            "- ambiguous — اگر مشخص نیست\n\n"
+            "نمونه‌های ثبت: اضافه کن، ثبت کن، بله، آره، ok، باشه، بزن تو، هدفش کن\n"
+            "نمونه‌های مشاوره: مشاوره، بررسی، به نظرت، منطقی، می‌صرفه، راهنمایی، نه اول، صبر کن\n"
+            "نمونه‌های هر دو: هر دو، هردو، جفتش، هر دو تا، both"
+        )
         messages = [
-            {"role": "system", "content": _CHOICE_SYSTEM},
-            {"role": "user", "content": _CHOICE_USER_TMPL.format(message=user_message)},
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
         ]
         try:
             raw = await get_ai_chat_completion(messages, require_json=False)
@@ -675,7 +830,6 @@ class GoalIntakeGate:
             "required_monthly_saving": monthly_saving,
         }
 
-        # Build compact finance summary for advisory
         budget_amount = finance_context.get("budget") or 0
         spent = finance_context.get("total_spent_this_month") or 0
         income = finance_context.get("total_income_this_month") or 0
@@ -705,12 +859,10 @@ class GoalIntakeGate:
         )
 
         messages: list[dict] = [{"role": "system", "content": _ADVISORY_SYSTEM}]
-
         if history:
             for item in history[-4:]:
                 if item.get("role") in {"user", "assistant"} and item.get("content"):
                     messages.append({"role": item["role"], "content": str(item["content"])[:400]})
-
         messages.append({"role": "user", "content": user_content})
 
         try:
@@ -728,7 +880,7 @@ class GoalIntakeGate:
         """Try to extract an amount from text using normalize_amount."""
         try:
             amount = normalize_amount(text)
-            if amount >= 1_000:  # min reasonable amount
+            if amount >= 1_000:
                 return amount
             return None
         except Exception:

@@ -160,6 +160,7 @@ class AgentPlanner:
         finance_context: dict[str, Any],
         history: list[dict] | None = None,
         execution_results: list[dict] | None = None,
+        semantic_interpretation: dict | None = None,
     ) -> AgentPlan:
         language_instruction = finance_context.get("output_language_instruction", "")
         messages = [
@@ -195,6 +196,25 @@ class AgentPlanner:
                         ),
                     }
                 )
+
+        if semantic_interpretation:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "SEMANTIC INTERPRETATION OF CURRENT MESSAGE (authoritative — use this, do not re-derive):\n"
+                        + json.dumps(semantic_interpretation, ensure_ascii=False, default=str)
+                        + "\n\nPlanner rules when using semantic_interpretation:\n"
+                        "- If action.can_write=false, do NOT create INSERT or UPDATE steps.\n"
+                        "- If user_intent is a question (is_question=true or intent in {goal_question,budget_question,advice_question}), plan SELECT steps only.\n"
+                        "- If date.resolved_date is set and confidence>=0.75, use that ISO date in params — do not re-parse with regex.\n"
+                        "- If money.amount is set and confidence>=0.75, use that integer amount in params.\n"
+                        "- If user_intent=cancel_flow or invalid_both_choice, plan no_op or final_response only.\n"
+                        "- If action.requires_more_info=true, plan ask_clarification step.\n"
+                        "- If user_intent=goal_question and referenced_entities.goal_title is set, SELECT that goal first."
+                    ),
+                }
+            )
 
         if execution_results:
             messages.append(
