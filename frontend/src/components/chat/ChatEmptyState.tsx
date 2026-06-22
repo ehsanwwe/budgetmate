@@ -152,18 +152,20 @@ export default function ChatEmptyState({
               <ArrowUp className="w-4 h-4" />
             </button>
 
-            <input
+            <textarea
                 value={input}
                 onChange={(e) => onInputChange(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    onSend();
-                  }
+                  if (e.key !== "Enter") return;
+                  if (e.shiftKey) return;
+                  e.preventDefault();
+                  if (!input.trim() || streaming) return;
+                  onSend();
                 }}
                 placeholder={t(dict, "chatEmpty.inputPlaceholder")}
                 disabled={streaming}
-                className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm text-[#2d1812] shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20"
+                rows={1}
+                className="min-w-0 flex-1 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm text-[#2d1812] shadow-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 resize-none"
             />
 
             <button

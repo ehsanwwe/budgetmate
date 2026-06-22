@@ -470,12 +470,19 @@ export default function ChatPage() {
                   </button>
 
                   <div className="flex-1 relative">
-                    <input
+                    <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          if (e.shiftKey) return;
+                          e.preventDefault();
+                          if (!input.trim() || streaming) return;
+                          sendMessage();
+                        }}
                         placeholder={t(dict, "chat.inputPlaceholder")}
                         disabled={streaming}
+                        rows={1}
                         className="w-full rounded-2xl bg-gray-100 border-0 px-4 py-3 text-sm text-[#2d1812] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2d1812]/20 resize-none"
                     />
                   </div>
