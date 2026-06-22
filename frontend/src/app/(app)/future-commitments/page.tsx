@@ -26,6 +26,7 @@ interface FutureCommitment {
   due_month?: string | null;
   description?: string | null;
   status: CommitmentStatus;
+  source?: string | null;
   related_transaction_id?: number | null;
   related_goal_id?: number | null;
 }
@@ -132,18 +133,25 @@ export default function FutureCommitmentsPage() {
                     <CardTitle className="text-base">{row.title}</CardTitle>
                     <p className="mt-1 text-sm font-bold text-[#2d1812]">{toman(row.amount)}</p>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "shrink-0 gap-1 rounded-full",
-                      row.status === "pending" && "border-amber-200 bg-amber-50 text-amber-700",
-                      row.status === "paid" && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                      row.status === "cancelled" && "border-red-200 bg-red-50 text-red-700"
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "gap-1 rounded-full",
+                        row.status === "pending" && "border-amber-200 bg-amber-50 text-amber-700",
+                        row.status === "paid" && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                        row.status === "cancelled" && "border-red-200 bg-red-50 text-red-700"
+                      )}
+                    >
+                      {statusIcon(row.status)}
+                      {statusLabel(row.status)}
+                    </Badge>
+                    {row.source === "goal_saving_plan" && (
+                      <Badge variant="outline" className="gap-1 rounded-full border-blue-200 bg-blue-50 text-blue-700 text-[10px]">
+                        پس‌انداز هدف
+                      </Badge>
                     )}
-                  >
-                    {statusIcon(row.status)}
-                    {statusLabel(row.status)}
-                  </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">

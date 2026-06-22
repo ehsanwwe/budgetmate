@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from "@/components/ui/skeleton";
 import { MoneyInput } from "@/components/money-input";
 import { Plus, Target, PlusCircle, Loader2 } from "lucide-react";
+import { JalaliDateInput } from "@/components/ui/jalali-date-input";
 
 const goalSchema = z.object({
   title: z.string().min(1),
@@ -39,7 +40,7 @@ interface Goal {
 }
 
 export default function GoalsPage() {
-  const { dict } = useLocale();
+  const { locale, dict } = useLocale();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -125,7 +126,17 @@ export default function GoalsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "goals.deadlineLabel")}</Label>
-                <Input {...goalForm.register("deadline")} type="date" />
+                <Controller
+                  name="deadline"
+                  control={goalForm.control}
+                  render={({ field }) => (
+                    <JalaliDateInput
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      locale={locale}
+                    />
+                  )}
+                />
               </div>
               <Button type="submit" className="w-full" disabled={goalForm.formState.isSubmitting}>
                 {goalForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

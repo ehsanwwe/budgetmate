@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from "@/components/ui/skeleton";
 import { MoneyInput } from "@/components/money-input";
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
+import { JalaliDateInput } from "@/components/ui/jalali-date-input";
 
 const txSchema = z.object({
   amount: z.number().positive(),
@@ -40,7 +41,7 @@ interface Transaction {
 interface Category { id: number; name: string; }
 
 export default function TransactionsPage() {
-  const { dict } = useLocale();
+  const { locale, dict } = useLocale();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +162,17 @@ export default function TransactionsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.dateLabel")}</Label>
-                <Input {...register("date")} type="date" />
+                <Controller
+                  name="date"
+                  control={control}
+                  render={({ field }) => (
+                    <JalaliDateInput
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      locale={locale}
+                    />
+                  )}
+                />
                 {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
               </div>
               <Button type="submit" className="w-full" disabled={isSubmitting}>

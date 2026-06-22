@@ -17,6 +17,7 @@ for primary intent classification.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 from datetime import date
@@ -450,18 +451,14 @@ class GoalIntakeGate:
                 metadata={"goal_intake_state": STATE_CANCELLED},
             )
 
-        # Invalid "both" choice — semantic primary
+        # Determine choice: semantic "invalid_both_choice" → "both", else call LLM classifier
         if semantic is not None and semantic.user_intent == "invalid_both_choice":
-            return AgentFinalResponse(
-                message=(
-                    "متوجه‌ام، اما برای ادامه‌ی این مرحله نمی‌تونم هم‌زمان هر دو مسیر رو شروع کنم. "
-                    "اول باید مشخص کنی می‌خوای این مورد به‌عنوان هدف ثبت بشه یا فعلاً فقط مشاوره مالی بگیری. "
-                    "بعد از انجام یکی، می‌تونیم سراغ مسیر بعدی هم بریم."
-                ),
-                metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
-            )
+            choice = "both"
+        else:
+            choice = await self._classify_choice(user_message)
 
-        choice = await self._classify_choice(user_message)
+        if choice == "both":
+            return await self._handle_both_choice(db, user, intent, payload)
 
         if choice == "add":
             return await self._insert_goal_from_intent(db, user, intent, payload, user_message, history)
@@ -472,19 +469,44 @@ class GoalIntakeGate:
                 message=advisory,
                 metadata={"goal_intake_state": STATE_CONSULTATION, "intent_id": intent.id},
             )
-        if choice == "both":
-            return AgentFinalResponse(
-                message=(
-                    "متوجه‌ام، اما برای ادامه‌ی این مرحله نمی‌تونم هم‌زمان هر دو مسیر رو شروع کنم. "
-                    "اول باید مشخص کنی می‌خوای این مورد به‌عنوان هدف ثبت بشه یا فعلاً فقط مشاوره مالی بگیری. "
-                    "بعد از انجام یکی، می‌تونیم سراغ مسیر بعدی هم بریم."
-                ),
-                metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
-            )
         # ambiguous — rephrase to avoid word-for-word repeat
         return AgentFinalResponse(
             message="برای ادامه یکی رو انتخاب کن: «ثبتش کن» یا «اول مشاوره بده».",
             metadata={"goal_intake_state": STATE_AWAITING_CHOICE, "intent_id": intent.id},
+        )
+
+    async def _handle_both_choice(
+        self,
+        db: Session,
+        user: User,
+        intent: PendingAgentIntent,
+        payload: dict,
+    ) -> AgentFinalResponse:
+        """Handle repeated 'both' choices with escalating responses and auto-cancel at count 3."""
+        count = int(payload.get("invalid_both_count", 0)) + 1
+
+        if count >= 3:
+            # Third time: cancel the pending flow entirely
+            self._cancel_stale_intents(db, user)
+            return AgentFinalResponse(
+                message=(
+                    "برای اینکه این مرحله دور خودش نچرخه، فعلاً این تصمیم رو کنار گذاشتم. "
+                    "هر وقت خواستی می‌تونی دوباره بگی ثبتش کنم یا مشاوره می‌خوام."
+                ),
+                metadata={"goal_intake_state": STATE_CANCELLED},
+            )
+
+        # Update count in payload (state stays awaiting_user_choice)
+        self._update_intent(db, intent, {"invalid_both_count": count}, STATE_AWAITING_CHOICE)
+
+        msg = await self._generate_both_response(payload, count)
+        return AgentFinalResponse(
+            message=msg,
+            metadata={
+                "goal_intake_state": STATE_AWAITING_CHOICE,
+                "intent_id": intent.id,
+                "invalid_both_count": count,
+            },
         )
 
     async def _consultation(
@@ -601,9 +623,23 @@ class GoalIntakeGate:
 
         self._consume_intent(db, intent)
 
+        # Create monthly saving commitments for this goal
+        commitment_suffix = ""
+        try:
+            commitment_count = self._create_saving_commitments(db, user, goal)
+            if commitment_count > 0:
+                installment_amount = round(goal.target_amount / commitment_count)
+                commitment_suffix = to_persian_digits(
+                    f" همچنین {commitment_count} تعهد پس‌انداز ماهانه "
+                    f"{installment_amount:,} تومانی برای رسیدن به این هدف اضافه شد."
+                )
+        except Exception:
+            logger.exception("goal_intake: failed to create saving commitments for goal %d", goal.id)
+            commitment_suffix = " (ایجاد تعهدات پس‌انداز با خطا مواجه شد.)"
+
         deadline_text = to_persian_digits(f"، مهلت {goal.deadline.isoformat()}") if goal.deadline else ""
         return AgentFinalResponse(
-            message=to_persian_digits(f"هدف «{goal.title}» با مبلغ {goal.target_amount:,} تومان{deadline_text} ثبت شد."),
+            message=to_persian_digits(f"هدف «{goal.title}» با مبلغ {goal.target_amount:,} تومان{deadline_text} ثبت شد.") + commitment_suffix,
             operations_summary=["inserted goal"],
             metadata={"goal_intake_state": STATE_CONSUMED, "goal_id": goal.id},
         )
@@ -873,6 +909,113 @@ class GoalIntakeGate:
                 f"با مبلغ {_fmt_toman(target_amount)} نیاز به بررسی بیشتری دارد. "
                 "آیا این خرید برایت ضروری است یا می‌تواند به بعد موکول شود؟"
             )
+
+    async def _generate_both_response(self, payload: dict, count: int) -> str:
+        """LLM-generated naturalized response for repeated 'both' choices."""
+        item_title = payload.get("item_title", "این مورد")
+        system = "دستیار مالی فارسی هستی. پاسخ کوتاه، طبیعی، و مودبانه بده. بدون عنوان یا مقدمه."
+
+        if count == 1:
+            user_content = (
+                f"کاربر برای تصمیم ثبت یا مشاوره هدف «{item_title}» گفته «هر دو». "
+                "به‌طور طبیعی توضیح بده که هم‌زمان هر دو ممکن نیست و باید اول یکی انتخاب کند. "
+                "یک سوال ملایم در پایان بپرس. کوتاه باش (۲ جمله)."
+            )
+        else:
+            user_content = (
+                f"کاربر دوباره برای هدف «{item_title}» گفته «هر دو» — این دومین بار است. "
+                "پاسخ کوتاه‌تر و صریح‌تر بده، متفاوت از پاسخ قبلی. "
+                "بگو فقط یکی انتخاب کند: «ثبتش کن» یا «مشاوره می‌خوام». "
+                "حداکثر یک جمله باش."
+            )
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+        try:
+            return await get_ai_chat_completion(messages, require_json=False)
+        except LLMProviderError:
+            if count == 1:
+                return (
+                    "متوجه‌ام، ولی برای این مرحله باید یکی رو انتخاب کنی. "
+                    "می‌خوای این هدف رو ثبت کنم یا اول مشاوره بگیری؟"
+                )
+            return "لطفاً یکی انتخاب کن: «ثبتش کن» یا «مشاوره می‌خوام»."
+
+    def _create_saving_commitments(self, db: Session, user: User, goal: Goal) -> int:
+        """Create monthly saving commitments for a goal. Returns number created.
+
+        Idempotent: skips creation if commitments with source=goal_saving_plan
+        already exist for this goal.
+        """
+        from app.models.future_commitment import FutureCommitment
+
+        if not goal.deadline or not goal.target_amount:
+            return 0
+
+        today = local_today()
+        if goal.deadline <= today:
+            return 0
+
+        # Idempotency: skip if saving plan already exists for this goal
+        existing = (
+            db.query(FutureCommitment)
+            .filter(
+                FutureCommitment.related_goal_id == goal.id,
+                FutureCommitment.user_id == user.id,
+                FutureCommitment.source == "goal_saving_plan",
+                FutureCommitment.status != "cancelled",
+            )
+            .count()
+        )
+        if existing > 0:
+            logger.info("goal_intake: saving commitments already exist for goal %d, skipping", goal.id)
+            return 0
+
+        # Calculate month count
+        delta_days = (goal.deadline - today).days
+        month_count = max(1, round(delta_days / 30))
+
+        base_amount = goal.target_amount // month_count
+        remainder = goal.target_amount - (base_amount * month_count)
+
+        created = 0
+        for i in range(month_count):
+            # Advance month-by-month from today, clamping to valid month days
+            raw_month = today.month + i
+            due_year = today.year + (raw_month - 1) // 12
+            due_month = (raw_month - 1) % 12 + 1
+            max_day = calendar.monthrange(due_year, due_month)[1]
+            due_day = min(today.day, max_day)
+            due_date = date(due_year, due_month, due_day)
+
+            # Distribute remainder on the last installment to ensure exact sum
+            installment_amount = base_amount + (remainder if i == month_count - 1 else 0)
+
+            commitment = FutureCommitment(
+                user_id=user.id,
+                title=f"پس‌انداز خرید {goal.title}",
+                amount=installment_amount,
+                due_date=due_date,
+                due_month=f"{due_year}-{due_month:02d}",
+                related_goal_id=goal.id,
+                source="goal_saving_plan",
+                status="pending",
+                description=f"قسط پس‌انداز برای هدف {goal.title}",
+                metadata_json={
+                    "installment_index": i + 1,
+                    "installment_count": month_count,
+                    "goal_title": goal.title,
+                },
+            )
+            db.add(commitment)
+            created += 1
+
+        if created > 0:
+            db.commit()
+
+        return created
 
     # ── Amount extraction utility ─────────────────────────────────────────────
 
