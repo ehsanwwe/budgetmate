@@ -58,8 +58,25 @@ class AgentOrchestrator:
         user_message: str,
         history: list[dict] | None = None,
         chat_mode: str | None = None,
+        client_message_id: str | None = None,
     ) -> AgentFinalResponse:
         locale: str = getattr(user, "language", None) or "fa"
+
+        # Cross-request idempotency: if client_message_id is provided and we already processed
+        # it, return a cached no-op instead of re-executing writes.
+        if client_message_id:
+            if self._is_already_processed(db, user.id, client_message_id):
+                logger.info(
+                    "agent skipping duplicate request client_message_id=%s user=%s",
+                    client_message_id,
+                    user.id,
+                )
+                return AgentFinalResponse(
+                    message="این درخواست قبلاً پردازش شده است.",
+                    metadata={"idempotent_skip": True, "client_message_id": client_message_id},
+                )
+            self._mark_processing(db, user.id, client_message_id)
+
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
 
@@ -198,3 +215,44 @@ class AgentOrchestrator:
                 "cannot set user_id",
             )
         )
+
+    @staticmethod
+    def _cmid_fingerprint(user_id: int, client_message_id: str) -> str:
+        import hashlib
+        raw = f"cmid:{user_id}:{client_message_id}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:64]
+
+    def _is_already_processed(self, db: Session, user_id: int, client_message_id: str) -> bool:
+        try:
+            from app.models.agent_idempotency import AgentOperationEvent
+            fp = self._cmid_fingerprint(user_id, client_message_id)
+            return (
+                db.query(AgentOperationEvent)
+                .filter(
+                    AgentOperationEvent.user_id == user_id,
+                    AgentOperationEvent.operation_fingerprint == fp,
+                )
+                .first()
+            ) is not None
+        except Exception:
+            return False
+
+    def _mark_processing(self, db: Session, user_id: int, client_message_id: str) -> None:
+        try:
+            from app.models.agent_idempotency import AgentOperationEvent
+            fp = self._cmid_fingerprint(user_id, client_message_id)
+            event = AgentOperationEvent(
+                user_id=user_id,
+                operation_fingerprint=fp,
+                operation_type="request_guard",
+                table_name="_request",
+                status="executed",
+            )
+            db.add(event)
+            db.commit()
+        except Exception as exc:
+            logger.debug("Could not mark client_message_id processing: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass

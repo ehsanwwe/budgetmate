@@ -591,7 +591,7 @@ def test_emotional_spending_plan_queries_context_and_stores_insight(db):
     )
     result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([plan, final_plan])).run(db, user(db), "emotional spending advice"))
     assert "چقدر میخواهی" not in result.message
-    assert "24" in result.message
+    assert "۲۴" in result.message or "24" in result.message
     insight = db.query(BehaviorInsight).filter(BehaviorInsight.user_id == 1, BehaviorInsight.insight_type == "emotional_spending").first()
     assert insight is not None
 

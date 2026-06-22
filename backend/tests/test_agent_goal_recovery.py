@@ -221,7 +221,7 @@ def test_personal_cfo_advice_repairs_scoping_mistake_and_uses_clean_final():
     final_plan = AgentPlan(intent="final", final_response_hint="برای کم کردن هزینه‌های غیرضروری، اول خرج‌های اختیاری را سقف‌گذاری کن، خریدهای فوری را 24 ساعت عقب بینداز و هر هفته سه دسته پرخرج را مرور کن.")
     result = asyncio.run(AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner([invalid_plan, select_plan, final_plan])).run(db, current_user(db), "چطوری هزینه های غیر ضروری رو کم کنم؟"))
     assert "غیرضروری" in result.message
-    assert "24" in result.message
+    assert "۲۴" in result.message or "24" in result.message
     assert "نتوانستم" not in result.message
     db.close()
 

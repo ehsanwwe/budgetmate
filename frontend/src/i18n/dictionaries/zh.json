@@ -151,6 +151,7 @@
       "selectProvince": "选择省份",
       "cityLabel": "城市",
       "selectCity": "选择城市",
+      "sectionFinancialStatus": "当前财务状况",
       "nextButton": "继续",
       "errors": {
         "nameRequired": "姓名为必填项",
@@ -450,6 +451,16 @@
     "normal": { "label": "普通", "desc": "友好实用" },
     "roast": { "label": "讽刺", "desc": "轻松幽默的提醒" },
     "hype": { "label": "激励", "desc": "鼓励与正能量" }
+  },
+  "financialStatus": {
+    "stable_income": "我有稳定收入",
+    "irregular_income": "我的收入不规律",
+    "overspending": "我的支出超过收入",
+    "in_debt": "我有债务或分期付款",
+    "saving_for_goal": "我在为特定目标储蓄",
+    "low_income_pressure": "收入低，有财务压力",
+    "planning_only": "我只想跟踪我的支出",
+    "other": "其他情况"
   },
   "incomeRanges": {
     "lt10": "低于1000万Toman",

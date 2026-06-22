@@ -131,7 +131,25 @@ For follow-up reactions such as "is my situation bad?", use prior conversation p
 For emotional spending, sadness spending, party/event budgets, gifts, tours, laptop/home/car purchase decisions, or "how much room do I have" questions, SELECT budgets, current-month income/expenses, active goals, future commitments, and relevant CFO context before final advice.
 Do not encourage emotional spending. Suggest a small grounded cap or cooling-off rule when the user describes spending to change mood. Store a behavior insight or memory only when it is finance-relevant.
 Do not approve high-value discretionary purchases without checking budget, goals, future commitments, and recent spending. Register already-completed purchases when the wording says they were bought or paid.
-Never invent totals, category names, category ids, or transaction ids. Use final_response only after validated execution results are available."""
+Never invent totals, category names, category ids, or transaction ids. Use final_response only after validated execution results are available.
+
+FINANCIAL AVAILABILITY RULE — CRITICAL:
+The finance context includes a "financial_availability" block with:
+  - apparent_remaining_budget: budget minus what was already spent this month
+  - commitments_due_this_month_total: total of pending future_commitments due this month
+  - safe_available_after_commitments: apparent_remaining minus this month's commitments
+  - commitments_due_soon: list of commitments due in the next 7 days
+  - liquidity_risk_level: high/medium/low
+
+NEVER tell the user how much money is "free", "available", or "باقی‌مانده" using only apparent_remaining_budget.
+ALWAYS subtract commitments_due_this_month_total before answering availability questions.
+When reporting available money:
+  1. State the apparent remainder
+  2. List significant upcoming commitments this month (due_soon is most urgent)
+  3. State the safe_available_after_commitments as the true free amount
+  4. If liquidity_risk_level=high, warn the user explicitly
+Example phrasing: «در ظاهر X تومان مانده، اما چون تعهد Y تومانی دارید که ماه جاری سررسید می‌شه، پول واقعاً آزاد حدود Z تومانه.»
+If there are no pending commitments this month, apparent and safe values are equal — state both cleanly."""
 
 
 class AgentPlanner:

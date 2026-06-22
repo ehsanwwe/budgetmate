@@ -151,6 +151,7 @@
       "selectProvince": "انتخاب استان",
       "cityLabel": "شهر",
       "selectCity": "انتخاب شهر",
+      "sectionFinancialStatus": "وضعیت مالی فعلی",
       "nextButton": "ادامه",
       "errors": {
         "nameRequired": "نام و نام خانوادگی الزامی است",
@@ -450,6 +451,16 @@
     "normal": { "label": "عادی", "desc": "صمیمی و کاربردی" },
     "roast": { "label": "طعنه‌آمیز", "desc": "تذکر با طنز سبک" },
     "hype": { "label": "پرانرژی", "desc": "تشویق و انرژی مثبت" }
+  },
+  "financialStatus": {
+    "stable_income": "درآمد ثابت دارم",
+    "irregular_income": "درآمدم نامنظمه",
+    "overspending": "بیشتر از درآمدم خرج می‌کنم",
+    "in_debt": "بدهی یا قسط دارم",
+    "saving_for_goal": "برای یه هدف پس‌انداز می‌کنم",
+    "low_income_pressure": "درآمدم کمه و فشار مالی دارم",
+    "planning_only": "فقط می‌خوام خرج‌هامو مدیریت کنم",
+    "other": "وضعیت دیگه"
   },
   "incomeRanges": {
     "lt10": "کمتر از ۱۰ میلیون تومان",

@@ -151,6 +151,7 @@
       "selectProvince": "Select province",
       "cityLabel": "City",
       "selectCity": "Select city",
+      "sectionFinancialStatus": "Current Financial Status",
       "nextButton": "Continue",
       "errors": {
         "nameRequired": "First and last name are required",
@@ -450,6 +451,16 @@
     "normal": { "label": "Normal", "desc": "Friendly and practical" },
     "roast": { "label": "Roast", "desc": "Light sarcasm and humor" },
     "hype": { "label": "Hype", "desc": "Motivation and positive energy" }
+  },
+  "financialStatus": {
+    "stable_income": "I have stable income",
+    "irregular_income": "My income is irregular",
+    "overspending": "I spend more than I earn",
+    "in_debt": "I have debt or installments",
+    "saving_for_goal": "Saving for a specific goal",
+    "low_income_pressure": "Low income, financial pressure",
+    "planning_only": "Just want to track my expenses",
+    "other": "Other situation"
   },
   "incomeRanges": {
     "lt10": "Less than 10M Toman",

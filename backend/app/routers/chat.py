@@ -58,6 +58,7 @@ async def send_message(
         body.content,
         history=history,
         chat_mode=getattr(current_user, "chat_mode", "normal"),
+        client_message_id=body.client_message_id,
     )
     reply = final.message
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
@@ -76,6 +77,7 @@ async def send_message(
 async def stream_message(
     content: Optional[str] = Query(None),
     message: Optional[str] = Query(None),
+    client_message_id: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -100,6 +102,7 @@ async def stream_message(
             user_content,
             history=history,
             chat_mode=getattr(current_user, "chat_mode", "normal"),
+            client_message_id=client_message_id,
         )
         final_reply = final.message
         for word in final_reply.split(" "):

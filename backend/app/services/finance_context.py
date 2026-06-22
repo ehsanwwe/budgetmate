@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session, joinedload
 from app.core.jalali import current_jalali_month, gregorian_to_jalali
@@ -88,10 +88,29 @@ def build_finance_context(user: User, db: Session) -> dict:
         Goal.current_amount < Goal.target_amount,
         Goal.is_active == True,
     ).all()
-    commitments = db.query(FutureCommitment).filter(
+    all_commitments = db.query(FutureCommitment).filter(
         FutureCommitment.user_id == user.id,
         FutureCommitment.status == "pending",
-    ).order_by(FutureCommitment.due_date.asc().nullslast(), FutureCommitment.id.desc()).limit(8).all()
+    ).order_by(FutureCommitment.due_date.asc().nullslast(), FutureCommitment.id.desc()).all()
+
+    # Financial availability snapshot — subtract upcoming obligations from apparent remainder
+    soon_cutoff = today + timedelta(days=7)
+    month_end = end  # already computed as start of next month
+    commitments_due_soon = [c for c in all_commitments if c.due_date and c.due_date <= soon_cutoff]
+    commitments_due_this_month = [c for c in all_commitments if c.due_date and start <= c.due_date < month_end]
+    upcoming_required_total = sum(c.amount or 0 for c in all_commitments)
+    due_soon_total = sum(c.amount or 0 for c in commitments_due_soon)
+    due_this_month_total = sum(c.amount or 0 for c in commitments_due_this_month)
+    apparent_remaining = budget_amount - spent
+    safe_available = apparent_remaining - due_this_month_total
+    if due_this_month_total > apparent_remaining * 0.7:
+        liquidity_risk = "high"
+    elif due_this_month_total > apparent_remaining * 0.3:
+        liquidity_risk = "medium"
+    else:
+        liquidity_risk = "low"
+
+    commitments = all_commitments[:8]
 
     return {
         "user": {
@@ -143,4 +162,18 @@ def build_finance_context(user: User, db: Session) -> dict:
             }
             for item in commitments
         ],
+        "financial_availability": {
+            "apparent_remaining_budget": apparent_remaining,
+            "total_spent_this_month": spent,
+            "budget_amount": budget_amount,
+            "upcoming_required_commitments_total": upcoming_required_total,
+            "commitments_due_soon_total": due_soon_total,
+            "commitments_due_this_month_total": due_this_month_total,
+            "safe_available_after_commitments": safe_available,
+            "commitments_due_soon": [
+                {"title": c.title, "amount": c.amount, "due_date": c.due_date.isoformat() if c.due_date else None}
+                for c in commitments_due_soon[:5]
+            ],
+            "liquidity_risk_level": liquidity_risk,
+        },
     }

@@ -10,6 +10,11 @@ import { useLocale } from "@/i18n/LocaleContext";
 import { t as tDict } from "@/i18n/getDictionary";
 
 const INCOME_VALUES = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
+const FINANCIAL_STATUS_VALUES = [
+  "stable_income", "irregular_income", "overspending", "in_debt",
+  "saving_for_goal", "low_income_pressure", "planning_only", "other",
+] as const;
+type FinancialStatusValue = typeof FINANCIAL_STATUS_VALUES[number];
 
 const JALALI_YEARS = Array.from({ length: 60 }, (_, i) => 1404 - i);
 const JALALI_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -30,6 +35,7 @@ export default function OnboardingProfilePage() {
   const [province, setProvince] = useState("");
   const [city, setCity] = useState("");
   const [incomeRange, setIncomeRange] = useState("");
+  const [financialStatus, setFinancialStatus] = useState<FinancialStatusValue | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -87,6 +93,7 @@ export default function OnboardingProfilePage() {
       if (province) body.province = province;
       if (city) body.city = city;
       if (incomeRange) body.income_range = incomeRange;
+      if (financialStatus) body.current_financial_status = financialStatus;
 
       await api.post("/onboarding/profile", body);
       // Also update users/me for display_name
@@ -109,6 +116,8 @@ export default function OnboardingProfilePage() {
   const monthsMap = (dict as any).jalaliMonths as Record<string, string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const incomeMap = (dict as any).incomeRanges as Record<string, string>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const financialStatusMap = (dict as any).financialStatus as Record<string, string> | undefined;
 
   return (
       <OnboardingLayout
@@ -282,6 +291,38 @@ export default function OnboardingProfilePage() {
                             className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 text-right text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
                                 selected
                                     ? "border-[#2d1812] bg-[#2d1812] text-white shadow-[0_8px_20px_rgba(45,24,18,0.16)]"
+                                    : "border-[#2d1812]/10 bg-white/75 text-[#2d1812]/75 hover:border-[#2d1812]/20 hover:bg-white"
+                            }`}
+                        >
+                          {label}
+                        </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="h-px bg-[#2d1812]/[0.07] sm:bg-[#2d1812]/10" />
+
+              <section className="space-y-2 sm:space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[12px] font-bold text-[#2d1812] sm:text-[13px]">
+                    {t.sectionFinancialStatus ?? "وضعیت مالی فعلی"}
+                  </h2>
+                  <span className="text-[10px] text-gray-400 sm:text-[11px]">{t.optional}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                  {FINANCIAL_STATUS_VALUES.map((value) => {
+                    const selected = financialStatus === value;
+                    const label = financialStatusMap?.[value] ?? value;
+                    return (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setFinancialStatus(selected ? "" : value)}
+                            className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 text-right text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
+                                selected
+                                    ? "border-[#10b981] bg-[#10b981] text-white shadow-[0_8px_20px_rgba(16,185,129,0.16)]"
                                     : "border-[#2d1812]/10 bg-white/75 text-[#2d1812]/75 hover:border-[#2d1812]/20 hover:bg-white"
                             }`}
                         >

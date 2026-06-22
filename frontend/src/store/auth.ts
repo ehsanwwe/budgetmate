@@ -45,7 +45,7 @@ export const useAuthStore = create<AuthState>()(
       setAdminToken: (adminToken) => set({ adminToken }),
       setNeedsProfile: (needsProfile) => set({ needsProfile }),
       setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
-      logout: () => set({ token: null, user: null, needsProfile: false, onboardingCompleted: false }),
+      logout: () => set({ token: null, user: null, adminToken: null, needsProfile: false, onboardingCompleted: false }),
     }),
     { name: "auth-storage" }
   )

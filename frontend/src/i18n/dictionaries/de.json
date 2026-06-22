@@ -151,6 +151,7 @@
       "selectProvince": "Provinz wählen",
       "cityLabel": "Stadt",
       "selectCity": "Stadt wählen",
+      "sectionFinancialStatus": "Aktueller Finanzstatus",
       "nextButton": "Weiter",
       "errors": {
         "nameRequired": "Vor- und Nachname sind erforderlich",
@@ -450,6 +451,16 @@
     "normal": { "label": "Normal", "desc": "Freundlich und praktisch" },
     "roast": { "label": "Sarkastisch", "desc": "Leichter Humor und Kritik" },
     "hype": { "label": "Motivierend", "desc": "Motivation und positive Energie" }
+  },
+  "financialStatus": {
+    "stable_income": "Ich habe ein stabiles Einkommen",
+    "irregular_income": "Mein Einkommen ist unregelmäßig",
+    "overspending": "Ich gebe mehr aus als ich verdiene",
+    "in_debt": "Ich habe Schulden oder Raten",
+    "saving_for_goal": "Ich spare für ein bestimmtes Ziel",
+    "low_income_pressure": "Niedriges Einkommen, finanzieller Druck",
+    "planning_only": "Ich möchte nur meine Ausgaben verfolgen",
+    "other": "Andere Situation"
   },
   "incomeRanges": {
     "lt10": "Weniger als 10M Toman",

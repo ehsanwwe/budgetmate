@@ -151,6 +151,7 @@
       "selectProvince": "اختر المحافظة",
       "cityLabel": "المدينة",
       "selectCity": "اختر المدينة",
+      "sectionFinancialStatus": "الوضع المالي الحالي",
       "nextButton": "متابعة",
       "errors": {
         "nameRequired": "الاسم الأول واسم العائلة مطلوبان",
@@ -450,6 +451,16 @@
     "normal": { "label": "عادي", "desc": "ودي وعملي" },
     "roast": { "label": "ساخر", "desc": "تعليق خفيف الظل" },
     "hype": { "label": "متحمس", "desc": "تشجيع وطاقة إيجابية" }
+  },
+  "financialStatus": {
+    "stable_income": "دخلي ثابت",
+    "irregular_income": "دخلي غير منتظم",
+    "overspending": "أنفق أكثر مما أكسب",
+    "in_debt": "لدي ديون أو أقساط",
+    "saving_for_goal": "أدخر لهدف محدد",
+    "low_income_pressure": "دخل منخفض وضغط مالي",
+    "planning_only": "فقط أريد تتبع مصاريفي",
+    "other": "وضع آخر"
   },
   "incomeRanges": {
     "lt10": "أقل من 10 مليون تومان",
