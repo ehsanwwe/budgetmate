@@ -63,21 +63,40 @@ class AgentOrchestrator:
     ) -> AgentFinalResponse:
         locale: str = getattr(user, "language", None) or "fa"
 
-        # Cross-request idempotency: if client_message_id is provided and we already processed
-        # it, return a cached no-op instead of re-executing writes.
+        # Cross-request idempotency: replay original response for technical retries.
+        # Only fires when the same client_message_id is re-sent (network retry / fallback).
+        # A new client_message_id with identical text is always processed fresh.
         if client_message_id:
-            if self._is_already_processed(db, user.id, client_message_id):
+            cached = self._get_cached_response(db, user.id, client_message_id)
+            if cached is not None:
                 logger.info(
-                    "agent skipping duplicate request client_message_id=%s user=%s",
+                    "agent idempotent replay client_message_id=%s user=%s",
                     client_message_id,
                     user.id,
                 )
+                # cached="" means event exists but response not yet stored (concurrent retry or legacy)
                 return AgentFinalResponse(
-                    message="این درخواست قبلاً پردازش شده است.",
+                    message=cached if cached else "...",
                     metadata={"idempotent_skip": True, "client_message_id": client_message_id},
                 )
             self._mark_processing(db, user.id, client_message_id)
 
+        response = await self._process(db, user, user_message, history, chat_mode, locale)
+
+        if client_message_id and response.message:
+            self._store_response(db, user.id, client_message_id, response.message)
+
+        return response
+
+    async def _process(
+        self,
+        db: Session,
+        user: User,
+        user_message: str,
+        history: list[dict] | None,
+        chat_mode: str | None,
+        locale: str,
+    ) -> AgentFinalResponse:
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
         if chat_mode:
@@ -241,20 +260,35 @@ class AgentOrchestrator:
         raw = f"cmid:{user_id}:{client_message_id}"
         return hashlib.sha256(raw.encode()).hexdigest()[:64]
 
-    def _is_already_processed(self, db: Session, user_id: int, client_message_id: str) -> bool:
+    def _get_cached_response(self, db: Session, user_id: int, client_message_id: str) -> str | None:
+        """Return cached response for a previously processed client_message_id.
+
+        Returns:
+        - None  — never seen; caller should proceed with normal processing.
+        - ""    — event exists but response not yet stored (in-flight or legacy).
+        - str   — the original assistant response; caller should replay it.
+        """
         try:
             from app.models.agent_idempotency import AgentOperationEvent
             fp = self._cmid_fingerprint(user_id, client_message_id)
-            return (
+            event = (
                 db.query(AgentOperationEvent)
                 .filter(
                     AgentOperationEvent.user_id == user_id,
                     AgentOperationEvent.operation_fingerprint == fp,
+                    AgentOperationEvent.operation_type == "request_guard",
                 )
                 .first()
-            ) is not None
+            )
+            if event is None:
+                return None
+            payload = event.payload_json or {}
+            response = payload.get("response")
+            if response:
+                return str(response)
+            return ""  # Seen but response not yet stored
         except Exception:
-            return False
+            return None
 
     def _get_pending_intent_payload(self, db: Session, user: User) -> dict | None:
         try:
@@ -282,12 +316,37 @@ class AgentOrchestrator:
                 operation_fingerprint=fp,
                 operation_type="request_guard",
                 table_name="_request",
-                status="executed",
+                status="processing",
             )
             db.add(event)
             db.commit()
         except Exception as exc:
             logger.debug("Could not mark client_message_id processing: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+    def _store_response(self, db: Session, user_id: int, client_message_id: str, response: str) -> None:
+        """Persist the assistant response so duplicate retries can replay it."""
+        try:
+            from app.models.agent_idempotency import AgentOperationEvent
+            fp = self._cmid_fingerprint(user_id, client_message_id)
+            event = (
+                db.query(AgentOperationEvent)
+                .filter(
+                    AgentOperationEvent.user_id == user_id,
+                    AgentOperationEvent.operation_fingerprint == fp,
+                    AgentOperationEvent.operation_type == "request_guard",
+                )
+                .first()
+            )
+            if event:
+                event.status = "executed"
+                event.payload_json = {"response": response}
+                db.commit()
+        except Exception as exc:
+            logger.debug("Could not store response for client_message_id: %s", exc)
             try:
                 db.rollback()
             except Exception:

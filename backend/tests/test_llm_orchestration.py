@@ -596,9 +596,9 @@ class TestGoalInsertionUsesLLMDateResolver:
 class TestClientMessageIdIdempotency:
     """Sending the same client_message_id twice must produce one DB write."""
 
-    def test_duplicate_cmid_skips_processing(self, db):
+    def test_duplicate_cmid_replays_original_response(self, db):
+        """Same client_message_id must replay the original response, not show an error."""
         from app.services.agent_orchestrator.orchestrator import AgentOrchestrator
-        from app.services.agent_orchestrator.types import AgentFinalResponse
         u = user1(db)
         orch = AgentOrchestrator(goal_intake_gate=NullGoalIntakeGate())
 
@@ -618,16 +618,17 @@ class TestClientMessageIdIdempotency:
                     mock_interp_instance.interpret = AsyncMock(return_value=SemanticResult.fallback())
                     mock_plan.return_value = final_plan
 
-                    # First call
+                    # First call — processes normally
                     r1 = await orch.run(db, u, "تست", client_message_id="test-uuid-1")
                     assert r1.message == "پاسخ آزمایشی"
 
-                    # Second call with same ID — should be idempotent skip
+                    # Second call with same ID — must replay original, not show error message
                     r2 = await orch.run(db, u, "تست", client_message_id="test-uuid-1")
-                    assert "پردازش شده" in r2.message
+                    assert r2.message == "پاسخ آزمایشی"  # original response replayed
                     assert r2.metadata.get("idempotent_skip") is True
+                    assert "پردازش شده" not in r2.message
 
-                    # Planner should only have been called once
+                    # Planner called only once (second call was a replay)
                     assert mock_plan.call_count == 1
 
         asyncio.run(run())

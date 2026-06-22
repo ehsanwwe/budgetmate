@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.services.agent_orchestrator.conversation_context import build_history_context
 from app.services.agent_orchestrator.types import AgentPlan
 from app.services.ai import LLMProviderError, get_ai_chat_completion
 
@@ -186,27 +187,31 @@ class AgentPlanner:
         if language_instruction:
             messages.append({"role": "system", "content": language_instruction})
 
-        # History passed as a labeled system block — context only, must NOT re-execute
+        # Full conversation history — context only, must NOT re-execute writes.
+        # All available messages are passed (older + recent) so the LLM can resolve
+        # references like 'هزینه‌های بالا', 'اول چت گفتم', 'همون چیزایی که گفتم'.
         if history:
-            history_lines = []
-            for item in history[-8:]:
-                if item.get("role") in {"user", "assistant"} and item.get("content"):
-                    role_label = "USER" if item["role"] == "user" else "ASSISTANT"
-                    truncated = str(item["content"])[:600]
-                    history_lines.append(f"[{role_label}]: {truncated}")
-            if history_lines:
-                history_block = "\n".join(history_lines)
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": (
-                            "CONVERSATION HISTORY — FOR CONTEXT ONLY. "
-                            "Do NOT create INSERT or UPDATE operations from this history. "
-                            "Use it only to resolve references in the CURRENT message below.\n\n"
-                            + history_block
-                        ),
-                    }
-                )
+            history_block = build_history_context(
+                history,
+                recent_count=12,
+                max_chars_recent=1200,
+                max_chars_older=800,
+            )
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "CONVERSATION HISTORY — FOR CONTEXT ONLY. "
+                        "Do NOT create INSERT or UPDATE operations from this history. "
+                        "IMPORTANT: When the user refers to earlier statements "
+                        "(e.g. 'همون هزینه‌های بالا', 'اول چت گفتم', 'قبلاً گفتم', "
+                        "'همینایی که بالا گفتم', 'با اون هزینه‌ها'), resolve the reference "
+                        "from this conversation history BEFORE asking for clarification. "
+                        "If the referenced information exists anywhere in the history, use it directly.\n\n"
+                        + history_block
+                    ),
+                }
+            )
 
         if semantic_interpretation:
             messages.append(

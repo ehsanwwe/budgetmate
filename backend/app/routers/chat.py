@@ -27,7 +27,7 @@ def _save_message(db: Session, user_id: int, role: MessageRole, content: str) ->
     return msg
 
 
-def _get_history(db: Session, user_id: int, limit: int = 20) -> list[dict]:
+def _get_history(db: Session, user_id: int, limit: int = 30) -> list[dict]:
     """Fetch last `limit` messages ordered oldest-first, formatted for the AI provider."""
     messages = (
         db.query(ChatMessage)

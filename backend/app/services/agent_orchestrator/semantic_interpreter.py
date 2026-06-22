@@ -104,7 +104,7 @@ _USER_TMPL = """\
 Finance context (compact):
 {finance_context}
 
-Recent conversation:
+Conversation history (use to resolve references like 'هزینه‌های بالا', 'اول چت گفتم', 'قبلاً گفتم'):
 {history}
 
 Current user message: {message}"""
@@ -212,10 +212,10 @@ class SemanticInterpreter:
 
         history_lines: list[str] = []
         if history:
-            for item in history[-6:]:
+            for item in history[-15:]:
                 if item.get("role") in {"user", "assistant"} and item.get("content"):
                     label = "کاربر" if item["role"] == "user" else "دستیار"
-                    history_lines.append(f"[{label}]: {str(item['content'])[:300]}")
+                    history_lines.append(f"[{label}]: {str(item['content'])[:600]}")
 
         compact_ctx = {
             k: v
