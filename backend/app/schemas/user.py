@@ -1,6 +1,6 @@
 from datetime import date as DateType, datetime
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from app.i18n.config import SUPPORTED_LOCALES, SUPPORTED_CURRENCIES
 
 VALID_INCOME_RANGES = {"lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"}
@@ -41,7 +41,7 @@ class UserOut(BaseModel):
     onboarding_completed_at: Optional[datetime] = None
     chat_mode: str = "normal"
     preferred_currency: str = "IRT"
-    current_financial_status: Optional[str] = None
+    current_financial_status: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -119,7 +119,7 @@ class ProfileUpdate(BaseModel):
     province: Optional[str] = None
     city: Optional[str] = None
     income_range: Optional[str] = None
-    current_financial_status: Optional[str] = None
+    current_financial_status: Optional[list[str]] = None
 
     @field_validator("income_range", mode="before")
     @classmethod
@@ -130,10 +130,13 @@ class ProfileUpdate(BaseModel):
 
     @field_validator("current_financial_status", mode="before")
     @classmethod
-    def validate_financial_status(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in VALID_FINANCIAL_STATUSES:
-            raise ValueError(f"current_financial_status must be one of: {', '.join(VALID_FINANCIAL_STATUSES)}")
-        return v
+    def validate_financial_status(cls, v) -> Optional[list[str]]:
+        if v is None:
+            return None
+        values = [v] if isinstance(v, str) else list(v)
+        if any(item not in VALID_FINANCIAL_STATUSES for item in values):
+            raise ValueError(f"current_financial_status values must be in: {', '.join(VALID_FINANCIAL_STATUSES)}")
+        return list(dict.fromkeys(values))
 
     @field_validator("birthdate", mode="before")
     @classmethod
@@ -164,7 +167,7 @@ class OnboardingStatus(BaseModel):
     city: Optional[str] = None
     income_range: Optional[str] = None
     agreement_version: Optional[str] = None
-    current_financial_status: Optional[str] = None
+    current_financial_status: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

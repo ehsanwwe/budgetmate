@@ -65,12 +65,22 @@ def build_agent_context(user: User, db: Session) -> dict:
     payload["personal_cfo"] = build_cfo_context(db, user.id)
 
     # Financial status guidance injected directly into LLM context
-    cfs = getattr(user, "current_financial_status", None)
+    status_values = getattr(user, "current_financial_status", None) or []
+    if isinstance(status_values, str):
+        status_values = [status_values]
+    cfs = status_values[0] if status_values else None
     payload["financial_status_context"] = {
         "current_financial_status": cfs or "unknown",
         "label_fa": _FINANCIAL_STATUS_LABELS.get(cfs or "", "وضعیت مالی مشخص نشده"),
         "guidance": _FINANCIAL_STATUS_GUIDANCE.get(cfs or "", "از وضعیت مالی با دقت و بدون فرض پیش‌فرض برخورد کن."),
     }
+    payload["financial_status_context"]["current_financial_status"] = status_values or ["unknown"]
+    payload["financial_status_context"]["label_fa"] = [
+        _FINANCIAL_STATUS_LABELS.get(item, item) for item in status_values
+    ]
+    payload["financial_status_context"]["guidance"] = [
+        _FINANCIAL_STATUS_GUIDANCE.get(item, item) for item in status_values
+    ]
     return payload
 
 

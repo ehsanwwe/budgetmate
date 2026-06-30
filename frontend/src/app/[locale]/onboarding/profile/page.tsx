@@ -38,7 +38,7 @@ export default function OnboardingProfilePage() {
   const [province, setProvince] = useState("");
   const [city, setCity] = useState("");
   const [incomeRange, setIncomeRange] = useState("");
-  const [financialStatus, setFinancialStatus] = useState<FinancialStatusValue | "">("");
+  const [financialStatus, setFinancialStatus] = useState<FinancialStatusValue[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // Becomes true after backend/draft hydration completes, gates auto-save
@@ -59,28 +59,32 @@ export default function OnboardingProfilePage() {
       .get("/onboarding/status")
       .then((r) => {
         const status = r.data;
+        const hasDraft = userId ? onboardingDraft.exists(userId) : false;
         const draft: OnboardingDraft = userId ? onboardingDraft.read(userId) : {
           name: "", familyName: "", birthYear: "", birthMonth: "", birthDay: "",
-          province: "", city: "", incomeRange: "", financialStatus: "",
+          province: "", city: "", incomeRange: "", financialStatus: [],
         };
 
-        // Backend wins for saved fields; draft fills unsaved optional fields
-        const mergedName = (status.first_name ?? status.name) || draft.name;
-        const mergedFamily = status.last_name || status.family_name || draft.familyName;
-        const mergedProvince = status.province || draft.province;
-        const mergedCity = status.city || draft.city;
-        const mergedIncome = status.income_range || draft.incomeRange;
-        const mergedStatus = status.current_financial_status || draft.financialStatus;
+        // An unfinished local draft wins; backend values seed the first visit.
+        const mergedName = hasDraft ? draft.name : (status.first_name ?? status.name) || "";
+        const mergedFamily = hasDraft ? draft.familyName : status.last_name || status.family_name || "";
+        const mergedProvince = hasDraft ? draft.province : status.province || "";
+        const mergedCity = hasDraft ? draft.city : status.city || "";
+        const mergedIncome = hasDraft ? draft.incomeRange : status.income_range || "";
+        const backendStatuses = Array.isArray(status.current_financial_status)
+          ? status.current_financial_status
+          : status.current_financial_status ? [status.current_financial_status] : [];
+        const mergedStatus = hasDraft ? draft.financialStatus : backendStatuses;
 
         // Birthdate: backend status doesn't expose Jalali components — use draft only
         const importedBirthdate = status.birthdate ? isoToJalaliParts(status.birthdate) : null;
         setName(mergedName);
         setFamilyName(mergedFamily);
-        setBirthYear(importedBirthdate?.year || draft.birthYear);
-        setBirthMonth(importedBirthdate?.month || draft.birthMonth);
-        setBirthDay(importedBirthdate?.day || draft.birthDay);
+        setBirthYear(hasDraft ? draft.birthYear : importedBirthdate?.year || "");
+        setBirthMonth(hasDraft ? draft.birthMonth : importedBirthdate?.month || "");
+        setBirthDay(hasDraft ? draft.birthDay : importedBirthdate?.day || "");
         setIncomeRange(mergedIncome);
-        setFinancialStatus(mergedStatus as FinancialStatusValue | "");
+        setFinancialStatus(mergedStatus as FinancialStatusValue[]);
 
         if (mergedProvince) {
           // City will be restored after cities list loads
@@ -100,7 +104,7 @@ export default function OnboardingProfilePage() {
           setBirthMonth(draft.birthMonth);
           setBirthDay(draft.birthDay);
           setIncomeRange(draft.incomeRange);
-          setFinancialStatus(draft.financialStatus as FinancialStatusValue | "");
+          setFinancialStatus(draft.financialStatus as FinancialStatusValue[]);
           if (draft.province) {
             pendingCityRef.current = draft.city;
             setProvince(draft.province);
@@ -159,7 +163,7 @@ export default function OnboardingProfilePage() {
     setError("");
     setLoading(true);
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, string | string[]> = {
         name: name.trim(),
         family_name: familyName.trim(),
       };
@@ -169,14 +173,13 @@ export default function OnboardingProfilePage() {
       if (province) body.province = province;
       if (city) body.city = city;
       if (incomeRange) body.income_range = incomeRange;
-      if (financialStatus) body.current_financial_status = financialStatus;
+      body.current_financial_status = financialStatus;
 
       await api.post("/onboarding/profile", body);
       const meRes = await api.get("/users/me");
       setUser(meRes.data);
 
       // Clear draft — all values are now saved in backend
-      if (userId) onboardingDraft.clear(userId);
 
       router.push(`/${locale}/onboarding/intro`);
     } catch {
@@ -203,7 +206,7 @@ export default function OnboardingProfilePage() {
           backHref={`/${locale}/login/otp`}
           totalSteps={5}
           currentStep={1}
-          showBack={false}
+          showBack={true}
       >
         <motion.div
             initial={{ y: 12, opacity: 0 }}
@@ -392,13 +395,15 @@ export default function OnboardingProfilePage() {
 
                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                   {FINANCIAL_STATUS_VALUES.map((value) => {
-                    const selected = financialStatus === value;
+                    const selected = financialStatus.includes(value);
                     const label = financialStatusMap?.[value] ?? value;
                     return (
                         <button
                             key={value}
                             type="button"
-                            onClick={() => setFinancialStatus(selected ? "" : value)}
+                            onClick={() => setFinancialStatus((current) =>
+                              selected ? current.filter((item) => item !== value) : [...current, value]
+                            )}
                             className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 text-right text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
                                 selected
                                     ? "border-[#10b981] bg-[#10b981] text-white shadow-[0_8px_20px_rgba(16,185,129,0.16)]"

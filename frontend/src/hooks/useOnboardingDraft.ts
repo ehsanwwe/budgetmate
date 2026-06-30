@@ -7,7 +7,7 @@ export interface OnboardingDraft {
   province: string;
   city: string;
   incomeRange: string;
-  financialStatus: string;
+  financialStatus: string[];
 }
 
 const EMPTY: OnboardingDraft = {
@@ -19,7 +19,7 @@ const EMPTY: OnboardingDraft = {
   province: "",
   city: "",
   incomeRange: "",
-  financialStatus: "",
+  financialStatus: [],
 };
 
 function draftKey(userId: number): string {
@@ -27,12 +27,20 @@ function draftKey(userId: number): string {
 }
 
 export const onboardingDraft = {
+  exists(userId: number): boolean {
+    return typeof window !== "undefined" && localStorage.getItem(draftKey(userId)) !== null;
+  },
+
   read(userId: number): OnboardingDraft {
     if (typeof window === "undefined") return { ...EMPTY };
     try {
       const raw = localStorage.getItem(draftKey(userId));
       if (!raw) return { ...EMPTY };
-      return { ...EMPTY, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      const financialStatus = Array.isArray(parsed.financialStatus)
+        ? parsed.financialStatus
+        : parsed.financialStatus ? [parsed.financialStatus] : [];
+      return { ...EMPTY, ...parsed, financialStatus };
     } catch {
       return { ...EMPTY };
     }

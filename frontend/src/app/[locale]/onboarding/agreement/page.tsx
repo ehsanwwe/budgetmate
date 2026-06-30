@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
@@ -52,6 +52,13 @@ export default function OnboardingAgreementPage() {
     >
       {/* Top bar */}
       <div className="flex items-center justify-between px-6 pt-12 pb-4 shrink-0">
+        <button
+          onClick={() => router.push(`/${locale}/onboarding/intro`)}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 shadow-sm hover:bg-white"
+          aria-label={dict.onboarding.back ?? dict.common.back}
+        >
+          <ArrowRight className={`h-5 w-5 text-[#2d1812] ${dir === "ltr" ? "rotate-180" : ""}`} />
+        </button>
         {/* Logo pill */}
         <div className="flex items-center gap-2 bg-[#2d1812] text-white text-sm font-semibold px-4 py-2 rounded-full">
           {dict.common.appName}

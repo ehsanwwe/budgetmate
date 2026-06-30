@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, Integer, JSON, String
 from app.db import Base
 
 
@@ -32,7 +32,7 @@ class User(Base):
     chat_mode = Column(String, default="normal")
     monthly_income = Column(BigInteger, nullable=True, default=None)
     preferred_currency = Column(String, default="IRT")
-    current_financial_status = Column(String, nullable=True, default=None)
+    current_financial_status = Column(JSON, nullable=False, default=list)
 
     @property
     def display_name(self) -> str | None:

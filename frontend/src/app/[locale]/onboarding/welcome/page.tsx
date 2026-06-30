@@ -8,6 +8,8 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
 import { t as tDict } from "@/i18n/getDictionary";
+import { onboardingDraft } from "@/hooks/useOnboardingDraft";
+import { introDraft } from "@/hooks/useIntroDraft";
 
 const CELEBRATION_IMAGE = "https://images.unsplash.com/photo-1530021232320-687d8e3dba54?w=900&q=80";
 
@@ -57,6 +59,10 @@ export default function OnboardingWelcomePage() {
     setLoading(true);
     try {
       await api.post("/onboarding/complete");
+      if (user?.id) {
+        onboardingDraft.clear(user.id);
+        introDraft.clear(user.id);
+      }
       setOnboardingCompleted(true);
       router.replace(`/${locale}/chat`);
     } catch {

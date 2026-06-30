@@ -95,7 +95,6 @@ export default function OnboardingIntroPage() {
         audio_duration_seconds: audioDuration,
         source: determineSource(),
       });
-      if (userId) introDraft.clear(userId);
       router.push(`/${locale}/onboarding/agreement`);
     } catch {
       setSaveError(t.saveFailed ?? "خطا در ذخیره. لطفاً دوباره تلاش کن");
@@ -105,7 +104,6 @@ export default function OnboardingIntroPage() {
   }
 
   function handleSkip() {
-    if (userId) introDraft.clear(userId);
     router.push(`/${locale}/onboarding/agreement`);
   }
 
