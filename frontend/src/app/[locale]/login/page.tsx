@@ -6,6 +6,7 @@ import { Wallet, ShieldCheck, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
+import { getApiOrigin } from "@/lib/api-config";
 
 export default function LoginWelcomePage() {
   const router = useRouter();
@@ -26,8 +27,7 @@ export default function LoginWelcomePage() {
 
   const aboutPoints: string[] = Array.isArray(t.aboutPoints) ? t.aboutPoints : [];
   const startGoogleLogin = () => {
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-    window.location.assign(`${apiBase}/api/auth/google/login?locale=${locale}`);
+    window.location.assign(`${getApiOrigin()}/api/auth/google/login?locale=${locale}`);
   };
 
   return (

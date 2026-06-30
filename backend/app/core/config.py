@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlsplit
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import List
@@ -44,6 +45,32 @@ class Settings(BaseSettings):
         if not path.is_absolute():
             path = BACKEND_DIR / path
         return f"{prefix}{path.resolve().as_posix()}"
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def normalize_cors_origins(cls, value: str) -> str:
+        normalized: list[str] = []
+        for raw_origin in str(value).split(","):
+            origin = raw_origin.strip().rstrip("/")
+            if not origin:
+                continue
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or origin.startswith("http://https://")
+                or origin.startswith("https://http://")
+            ):
+                raise ValueError(f"Invalid CORS origin: {origin}")
+            canonical = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+            if canonical not in normalized:
+                normalized.append(canonical)
+        if not normalized:
+            raise ValueError("CORS_ORIGINS must contain at least one valid origin")
+        return ",".join(normalized)
 
     @property
     def cors_origins_list(self) -> List[str]:

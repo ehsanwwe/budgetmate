@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import api from "@/lib/api";
+import axios from "axios";
+import { getApiUrl } from "@/lib/api-config";
 import { useLocale } from "@/i18n/LocaleContext";
 import { useAuthStore } from "@/store/auth";
 
@@ -12,8 +13,12 @@ export default function GoogleCallbackPage() {
   const { locale, dict } = useLocale();
   const { setToken, setUser, setNeedsProfile, setOnboardingCompleted } = useAuthStore();
   const [message, setMessage] = useState(dict.auth.landing.googleCompleting);
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+
     const completeLogin = async () => {
       const hash = new URLSearchParams(window.location.hash.slice(1));
       const token = hash.get("access_token");
@@ -24,9 +29,12 @@ export default function GoogleCallbackPage() {
       }
 
       try {
-        setToken(token);
-        const response = await api.get("/users/me");
+        const response = await axios.get(`${getApiUrl()}/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000,
+        });
         const user = response.data;
+        setToken(token);
         setUser(user);
         setNeedsProfile(!user.first_name);
         setOnboardingCompleted(Boolean(user.onboarding_completed));
@@ -35,10 +43,14 @@ export default function GoogleCallbackPage() {
             ? `/${locale}/chat`
             : `/${locale}/onboarding/profile`
         );
-      } catch {
+      } catch (error) {
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Google OAuth profile validation failed", { status, error });
+        }
         useAuthStore.getState().logout();
         setMessage(dict.auth.landing.googleError);
-        router.replace(`/${locale}/login?google_error=profile_load_failed`);
+        router.replace(`/${locale}/login?google_error=profile_load_failed${status ? `&status=${status}` : ""}`);
       }
     };
     void completeLogin();

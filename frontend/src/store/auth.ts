@@ -28,11 +28,13 @@ interface AuthState {
   adminToken: string | null;
   needsProfile: boolean;
   onboardingCompleted: boolean;
+  hasHydrated: boolean;
   setToken: (token: string) => void;
   setUser: (user: User) => void;
   setAdminToken: (token: string) => void;
   setNeedsProfile: (v: boolean) => void;
   setOnboardingCompleted: (v: boolean) => void;
+  setHasHydrated: (v: boolean) => void;
   logout: () => void;
 }
 
@@ -44,13 +46,25 @@ export const useAuthStore = create<AuthState>()(
       adminToken: null,
       needsProfile: false,
       onboardingCompleted: false,
+      hasHydrated: false,
       setToken: (token) => set({ token }),
       setUser: (user) => set({ user }),
       setAdminToken: (adminToken) => set({ adminToken }),
       setNeedsProfile: (needsProfile) => set({ needsProfile }),
       setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+      setHasHydrated: (hasHydrated) => set({ hasHydrated }),
       logout: () => set({ token: null, user: null, adminToken: null, needsProfile: false, onboardingCompleted: false }),
     }),
-    { name: "auth-storage" }
+    {
+      name: "auth-storage",
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        adminToken: state.adminToken,
+        needsProfile: state.needsProfile,
+        onboardingCompleted: state.onboardingCompleted,
+      }),
+      onRehydrateStorage: () => (state) => state?.setHasHydrated(true),
+    }
   )
 );

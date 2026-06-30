@@ -1,18 +1,16 @@
 import bcrypt
+import logging
 import secrets
+import time
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from google.auth.exceptions import GoogleAuthError
-from google.auth.transport import requests as google_requests
-from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 from app.db import get_db
 from app.core.config import settings
 from app.core.auth import create_access_token
@@ -28,9 +26,175 @@ google_router = APIRouter(prefix="/auth/google", tags=["auth"])
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 GOOGLE_STATE_COOKIE = "google_oauth_state"
 GOOGLE_STATE_TTL_MINUTES = 10
 SUPPORTED_LOCALES = {"fa", "ar", "en", "de", "zh"}
+logger = logging.getLogger(__name__)
+_google_jwks_cache: dict = {"keys": [], "expires_at": 0.0}
+
+
+class GoogleJwksUnavailable(Exception):
+    """The Google signing-key service could not be reached reliably."""
+
+
+def _oauth_log(event: str, *, level: int = logging.INFO, **fields) -> None:
+    safe_fields = " ".join(f"{key}={value}" for key, value in fields.items())
+    logger.log(level, "oauth_google event=%s %s", event, safe_fields)
+
+
+def _safe_exception_message(exc: Exception) -> str:
+    return " ".join(str(exc).split())[:240] or "no_message"
+
+
+async def _get_google_jwks(client: httpx.AsyncClient, flow_id: str) -> list[dict]:
+    now = time.monotonic()
+    if _google_jwks_cache["keys"] and now < _google_jwks_cache["expires_at"]:
+        _oauth_log("jwks_cache_hit", flow_id=flow_id)
+        return _google_jwks_cache["keys"]
+
+    _oauth_log("jwks_fetch_started", flow_id=flow_id)
+    try:
+        response = await client.get(GOOGLE_JWKS_URL)
+        response.raise_for_status()
+        keys = response.json().get("keys", [])
+    except httpx.HTTPStatusError as exc:
+        _oauth_log(
+            "jwks_fetch_failed",
+            level=logging.WARNING,
+            flow_id=flow_id,
+            error_type=type(exc).__name__,
+            error_message=_safe_exception_message(exc),
+        )
+        if exc.response.status_code in {403, 429} or exc.response.status_code >= 500:
+            raise GoogleJwksUnavailable(_safe_exception_message(exc)) from exc
+        raise
+    except (httpx.RequestError, RuntimeError, ValueError, TypeError) as exc:
+        _oauth_log(
+            "jwks_fetch_failed",
+            level=logging.WARNING,
+            flow_id=flow_id,
+            error_type=type(exc).__name__,
+            error_message=_safe_exception_message(exc),
+        )
+        raise GoogleJwksUnavailable(_safe_exception_message(exc)) from exc
+    if not keys:
+        raise GoogleJwksUnavailable("Google JWKS response contained no keys")
+    max_age = 3600
+    for directive in response.headers.get("cache-control", "").split(","):
+        if directive.strip().startswith("max-age="):
+            try:
+                max_age = max(60, int(directive.split("=", 1)[1]))
+            except ValueError:
+                pass
+    _google_jwks_cache.update(keys=keys, expires_at=now + max_age)
+    _oauth_log("jwks_fetch_succeeded", flow_id=flow_id, key_count=len(keys), max_age=max_age)
+    return keys
+
+
+async def _validate_google_id_token_with_jwks(
+    raw_id_token: str, client: httpx.AsyncClient, flow_id: str
+) -> dict:
+    header = jwt.get_unverified_header(raw_id_token)
+    kid = header.get("kid")
+    if header.get("alg") != "RS256" or not kid:
+        raise JWTError("Google ID token has an invalid signing header")
+    keys = await _get_google_jwks(client, flow_id)
+    signing_key = next((key for key in keys if key.get("kid") == kid), None)
+    if signing_key is None:
+        # A rotated key may make a still-valid cache stale; refresh once.
+        _google_jwks_cache.update(keys=[], expires_at=0.0)
+        keys = await _get_google_jwks(client, flow_id)
+        signing_key = next((key for key in keys if key.get("kid") == kid), None)
+    if signing_key is None:
+        raise JWTError("No matching Google signing key")
+
+    claims = jwt.decode(
+        raw_id_token,
+        signing_key,
+        algorithms=["RS256"],
+        audience=settings.GOOGLE_CLIENT_ID,
+        options={"verify_signature": True, "verify_aud": True, "verify_exp": True},
+    )
+    if claims.get("iss") not in {"https://accounts.google.com", "accounts.google.com"}:
+        raise JWTError("Google ID token issuer is invalid")
+    return claims
+
+
+def _validate_tokeninfo_claims(claims: dict, raw_id_token: str, expected_nonce: str) -> dict:
+    if claims.get("aud") != settings.GOOGLE_CLIENT_ID:
+        raise JWTError("Google tokeninfo audience is invalid")
+    if claims.get("iss") not in {"https://accounts.google.com", "accounts.google.com"}:
+        raise JWTError("Google tokeninfo issuer is invalid")
+    try:
+        expires_at = int(claims.get("exp", 0))
+    except (TypeError, ValueError) as exc:
+        raise JWTError("Google tokeninfo expiry is invalid") from exc
+    if expires_at <= int(time.time()):
+        raise JWTError("Google tokeninfo token is expired")
+    if not claims.get("sub"):
+        raise JWTError("Google tokeninfo subject is missing")
+    if not claims.get("email"):
+        raise JWTError("Google tokeninfo email is missing")
+
+    verified = claims.get("email_verified")
+    if verified is not None and str(verified).lower() != "true":
+        raise JWTError("Google tokeninfo email is not verified")
+    claims["email_verified"] = True
+
+    unverified_claims = jwt.get_unverified_claims(raw_id_token)
+    token_nonce = claims.get("nonce") or unverified_claims.get("nonce")
+    if token_nonce is not None and not secrets.compare_digest(str(token_nonce), expected_nonce):
+        raise JWTError("Google tokeninfo nonce is invalid")
+    return claims
+
+
+async def _validate_google_id_token_with_tokeninfo(
+    raw_id_token: str,
+    client: httpx.AsyncClient,
+    flow_id: str,
+    expected_nonce: str,
+) -> dict:
+    _oauth_log("tokeninfo_validation_started", flow_id=flow_id)
+    response = await client.post(
+        GOOGLE_TOKENINFO_URL,
+        data={"id_token": raw_id_token},
+        headers={"Accept": "application/json", "User-Agent": "BudgetMate-OAuth/1.0"},
+    )
+    response.raise_for_status()
+    claims = _validate_tokeninfo_claims(response.json(), raw_id_token, expected_nonce)
+    _oauth_log("tokeninfo_validation_succeeded", flow_id=flow_id)
+    return claims
+
+
+async def _validate_google_id_token(
+    raw_id_token: str,
+    client: httpx.AsyncClient,
+    flow_id: str,
+    expected_nonce: str,
+) -> dict:
+    try:
+        claims = await _validate_google_id_token_with_jwks(raw_id_token, client, flow_id)
+        if claims.get("nonce") is not None and not secrets.compare_digest(
+            str(claims["nonce"]), expected_nonce
+        ):
+            raise JWTError("Google ID token nonce is invalid")
+        _oauth_log("token_validation_succeeded", flow_id=flow_id, method="httpx_jwks_rs256")
+        return claims
+    except GoogleJwksUnavailable as exc:
+        _oauth_log(
+            "token_validation_fallback",
+            level=logging.WARNING,
+            flow_id=flow_id,
+            reason="jwks_unavailable",
+            error_message=_safe_exception_message(exc),
+        )
+        claims = await _validate_google_id_token_with_tokeninfo(
+            raw_id_token, client, flow_id, expected_nonce
+        )
+        _oauth_log("token_validation_succeeded", flow_id=flow_id, method="tokeninfo")
+        return claims
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
@@ -51,6 +215,7 @@ def _localized_url(configured_url: str, locale: str, suffix: str = "") -> str:
 
 
 def _error_redirect(locale: str, error: str) -> RedirectResponse:
+    _oauth_log("callback_failed", level=logging.WARNING, locale=locale, reason=error)
     url = _localized_url(settings.GOOGLE_OAUTH_FRONTEND_ERROR_URL, locale)
     return RedirectResponse(f"{url}?{urlencode({'google_error': error})}")
 
@@ -63,8 +228,14 @@ def google_login(locale: str = "fa"):
         locale = "fa"
 
     nonce = secrets.token_urlsafe(32)
+    flow_id = secrets.token_hex(8)
     state = jwt.encode(
-        {"locale": locale, "nonce": nonce, "exp": datetime.utcnow() + timedelta(minutes=GOOGLE_STATE_TTL_MINUTES)},
+        {
+            "locale": locale,
+            "nonce": nonce,
+            "flow_id": flow_id,
+            "exp": datetime.utcnow() + timedelta(minutes=GOOGLE_STATE_TTL_MINUTES),
+        },
         settings.JWT_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
@@ -86,6 +257,7 @@ def google_login(locale: str = "fa"):
         samesite="lax",
         path="/api/auth/google/callback",
     )
+    _oauth_log("login_redirect_created", flow_id=flow_id, locale=locale, redirect_uri=settings.GOOGLE_REDIRECT_URI)
     return response
 
 
@@ -94,13 +266,22 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     state = request.query_params.get("state", "")
     cookie_state = request.cookies.get(GOOGLE_STATE_COOKIE, "")
     locale = "fa"
+    flow_id = "unknown"
+    _oauth_log(
+        "callback_started",
+        code_present=bool(request.query_params.get("code")),
+        state_present=bool(state),
+        state_cookie_present=bool(cookie_state),
+    )
     try:
         state_data = jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         locale = state_data.get("locale", "fa")
+        flow_id = state_data.get("flow_id", "unknown")
         if locale not in SUPPORTED_LOCALES or not secrets.compare_digest(state, cookie_state):
             raise JWTError("state mismatch")
     except (JWTError, ValueError):
         return _error_redirect(locale, "invalid_state")
+    _oauth_log("state_validated", flow_id=flow_id, locale=locale)
 
     if request.query_params.get("error"):
         return _error_redirect(locale, "access_denied")
@@ -109,7 +290,10 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         return _error_redirect(locale, "missing_code")
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(15, connect=10),
+            headers={"Accept": "application/json", "User-Agent": "BudgetMate-OAuth/1.0"},
+        ) as client:
             token_response = await client.post(
                 GOOGLE_TOKEN_URL,
                 data={
@@ -120,19 +304,30 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                     "grant_type": "authorization_code",
                 },
             )
-        token_response.raise_for_status()
-        raw_id_token = token_response.json().get("id_token")
-        if not raw_id_token:
-            raise ValueError("missing id_token")
-        claims = await run_in_threadpool(
-            google_id_token.verify_oauth2_token,
-            raw_id_token,
-            google_requests.Request(),
-            settings.GOOGLE_CLIENT_ID,
+            token_response.raise_for_status()
+            _oauth_log("token_exchange_succeeded", flow_id=flow_id, status=token_response.status_code)
+            token_payload = token_response.json()
+            raw_id_token = token_payload.get("id_token")
+            _oauth_log(
+                "token_payload_received",
+                flow_id=flow_id,
+                id_token_present=bool(raw_id_token),
+                access_token_present=bool(token_payload.get("access_token")),
+            )
+            if not raw_id_token:
+                raise ValueError("missing id_token")
+            _oauth_log("token_validation_started", flow_id=flow_id, method="httpx_jwks_rs256")
+            claims = await _validate_google_id_token(
+                raw_id_token, client, flow_id, state_data["nonce"]
+            )
+    except (httpx.HTTPError, JWTError, RuntimeError, ValueError, TypeError) as exc:
+        _oauth_log(
+            "token_validation_failed",
+            level=logging.WARNING,
+            flow_id=flow_id,
+            error_type=type(exc).__name__,
+            error_message=_safe_exception_message(exc),
         )
-        if claims.get("nonce") != state_data.get("nonce"):
-            raise ValueError("nonce mismatch")
-    except (httpx.HTTPError, GoogleAuthError, ValueError, TypeError):
         return _error_redirect(locale, "token_validation_failed")
 
     google_sub = claims.get("sub")
@@ -140,6 +335,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if not google_sub or not email or claims.get("email_verified") is not True:
         return _error_redirect(locale, "unverified_email")
     email = email.strip().lower()
+    _oauth_log("profile_validated", flow_id=flow_id, email_domain=email.rsplit("@", 1)[-1])
 
     user = db.query(User).filter(User.google_sub == google_sub).first()
     if user is None:
@@ -177,6 +373,13 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         if user is None:
             return _error_redirect(locale, "account_conflict")
 
+    _oauth_log(
+        "local_user_ready",
+        flow_id=flow_id,
+        user_id=user.id,
+        action="created" if is_new_user else "linked_or_existing",
+    )
+
     ensure_wallet(db, user.id)
     db.add(ActivityLog(
         user_id=user.id,
@@ -191,6 +394,13 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     )
     response = RedirectResponse(f"{callback_url}#access_token={app_token}")
     response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/auth/google/callback")
+    _oauth_log(
+        "session_redirect_created",
+        flow_id=flow_id,
+        user_id=user.id,
+        auth_mechanism="bearer_fragment",
+        callback_origin=urlsplit(callback_url).netloc,
+    )
     return response
 
 

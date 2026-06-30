@@ -27,6 +27,11 @@ RUN npm config set registry https://registry.npmjs.org/ \
 
 COPY frontend .
 
+ARG NEXT_PUBLIC_API_URL=https://apijibyar.digent24.com/api/v1
+ARG NEXT_PUBLIC_API_BASE_URL=https://apijibyar.digent24.com
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
 #CMD ["npm", "run", "dev"]
 RUN npm run build
 

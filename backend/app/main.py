@@ -53,7 +53,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-logger.info("CORS origins: %s", settings.cors_origins_list)
+logger.info("CORS origins normalized: %s", settings.cors_origins_list)
 log_ai_provider_config()
 
 PREFIX = "/api/v1"

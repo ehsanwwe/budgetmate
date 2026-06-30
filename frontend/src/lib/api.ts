@@ -1,7 +1,8 @@
 import axios from "axios";
+import { getApiUrl } from "@/lib/api-config";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
+  baseURL: getApiUrl(),
 });
 
 api.interceptors.request.use((config) => {
@@ -57,7 +58,7 @@ api.interceptors.response.use(
 );
 
 export const adminApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
+  baseURL: getApiUrl(),
 });
 
 adminApi.interceptors.request.use((config) => {

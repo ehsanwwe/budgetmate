@@ -10,10 +10,12 @@ export default function LocaleAppLayout({ children }: { children: React.ReactNod
   const locale = (params?.locale as string) || "fa";
   const token = useAuthStore((s) => s.token);
   const onboardingCompleted = useAuthStore((s) => s.onboardingCompleted);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const pathname = usePathname();
   const isChatPage = pathname?.endsWith("/chat");
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!token) {
       router.replace(`/${locale}/login`);
       return;
@@ -21,9 +23,9 @@ export default function LocaleAppLayout({ children }: { children: React.ReactNod
     if (!onboardingCompleted) {
       router.replace(`/${locale}/onboarding/profile`);
     }
-  }, [token, onboardingCompleted, router, locale]);
+  }, [token, onboardingCompleted, hasHydrated, router, locale]);
 
-  if (!token || !onboardingCompleted) return null;
+  if (!hasHydrated || !token || !onboardingCompleted) return null;
 
   return (
     <div className={isChatPage ? "h-dvh overflow-hidden bg-muted/30" : "min-h-screen bg-muted/30"}>

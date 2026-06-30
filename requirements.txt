@@ -8,7 +8,6 @@ python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
 httpx
-google-auth
 python-dotenv
 sse-starlette
 python-multipart
