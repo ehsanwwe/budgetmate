@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
     GOOGLE_OAUTH_FRONTEND_SUCCESS_URL: str = "http://localhost:3000/fa"
     GOOGLE_OAUTH_FRONTEND_ERROR_URL: str = "http://localhost:3000/fa/login"
+    GOOGLE_PEOPLE_PROFILE_ENRICHMENT_ENABLED: bool = False
 
     @field_validator("DATABASE_URL")
     @classmethod

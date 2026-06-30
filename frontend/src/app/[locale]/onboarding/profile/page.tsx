@@ -9,6 +9,7 @@ import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
 import { t as tDict } from "@/i18n/getDictionary";
 import { onboardingDraft, OnboardingDraft } from "@/hooks/useOnboardingDraft";
+import { isoToJalaliParts } from "@/lib/fmt";
 
 const INCOME_VALUES = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
 const FINANCIAL_STATUS_VALUES = [
@@ -64,19 +65,20 @@ export default function OnboardingProfilePage() {
         };
 
         // Backend wins for saved fields; draft fills unsaved optional fields
-        const mergedName = (status.name ?? status.first_name) || draft.name;
-        const mergedFamily = status.family_name || draft.familyName;
+        const mergedName = (status.first_name ?? status.name) || draft.name;
+        const mergedFamily = status.last_name || status.family_name || draft.familyName;
         const mergedProvince = status.province || draft.province;
         const mergedCity = status.city || draft.city;
         const mergedIncome = status.income_range || draft.incomeRange;
         const mergedStatus = status.current_financial_status || draft.financialStatus;
 
         // Birthdate: backend status doesn't expose Jalali components — use draft only
+        const importedBirthdate = status.birthdate ? isoToJalaliParts(status.birthdate) : null;
         setName(mergedName);
         setFamilyName(mergedFamily);
-        setBirthYear(draft.birthYear);
-        setBirthMonth(draft.birthMonth);
-        setBirthDay(draft.birthDay);
+        setBirthYear(importedBirthdate?.year || draft.birthYear);
+        setBirthMonth(importedBirthdate?.month || draft.birthMonth);
+        setBirthDay(importedBirthdate?.day || draft.birthDay);
         setIncomeRange(mergedIncome);
         setFinancialStatus(mergedStatus as FinancialStatusValue | "");
 

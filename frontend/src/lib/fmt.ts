@@ -34,6 +34,22 @@ export function isoToJalali(iso: string): string {
   return jDate(iso);
 }
 
+/** Convert Gregorian ISO date to numeric Jalali selector parts. */
+export function isoToJalaliParts(iso: string): { year: string; month: string; day: string } | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = (dayjs(iso) as any).calendar("jalali");
+    if (!d.isValid()) return null;
+    return {
+      year: d.format("YYYY"),
+      month: String(Number(d.format("MM"))),
+      day: String(Number(d.format("DD"))),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Convert a Jalali date string (yyyy-mm-dd, accepts Persian or Latin digits,
  * and / or - as separator) to a Gregorian ISO string (yyyy-mm-dd).

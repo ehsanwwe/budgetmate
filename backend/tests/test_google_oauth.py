@@ -68,6 +68,7 @@ def oauth_client(monkeypatch):
     monkeypatch.setattr(auth.httpx, "AsyncClient", FakeAsyncClient)
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "test-client")
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "test-secret")
+    monkeypatch.setattr(settings, "GOOGLE_PEOPLE_PROFILE_ENRICHMENT_ENABLED", False)
     monkeypatch.setattr(
         settings, "GOOGLE_REDIRECT_URI", "https://api.example.com/api/auth/google/callback"
     )
@@ -105,6 +106,8 @@ def test_google_callback_creates_user_and_returns_app_jwt(oauth_client, monkeypa
             "email": "user@example.com",
             "email_verified": True,
             "name": "Example User",
+            "given_name": "Example",
+            "family_name": "User",
             "picture": "https://example.com/avatar.png",
             "nonce": "test-nonce",
         }
@@ -125,7 +128,130 @@ def test_google_callback_creates_user_and_returns_app_jwt(oauth_client, monkeypa
     with Session() as db:
         user = db.query(User).filter(User.google_sub == "google-user-1").one()
         assert user.email == "user@example.com"
+        assert user.first_name == "Example"
+        assert user.last_name == "User"
         assert claims["sub"] == str(user.id)
+
+
+def test_google_name_mapping_preserves_full_name_fallback():
+    assert auth._map_google_names({"name": "Ali Rezaei"}) == ("Ali", "Rezaei", "Ali Rezaei")
+
+
+def test_google_name_mapping_handles_missing_names():
+    assert auth._map_google_names({}) == (None, None, None)
+
+
+def test_existing_google_user_names_are_not_overwritten(oauth_client, monkeypatch):
+    client, Session = oauth_client
+    with Session() as db:
+        existing = User(
+            email="existing@example.com",
+            phone="+989121111111",
+            first_name="ManualFirst",
+            last_name="ManualLast",
+            auth_provider="local",
+        )
+        db.add(existing)
+        db.commit()
+
+    async def valid_token(*args, **kwargs):
+        return {
+            "sub": "google-existing",
+            "email": "existing@example.com",
+            "email_verified": True,
+            "given_name": "GoogleFirst",
+            "family_name": "GoogleLast",
+            "nonce": "test-nonce",
+        }
+
+    monkeypatch.setattr(auth, "_validate_google_id_token", valid_token)
+    state = make_state()
+    response = client.get(
+        f"/api/auth/google/callback?code=test-code&state={state}",
+        cookies={auth.GOOGLE_STATE_COOKIE: state},
+        follow_redirects=False,
+    )
+    assert response.status_code in {302, 307}
+    with Session() as db:
+        user = db.query(User).filter(User.email == "existing@example.com").one()
+        assert user.first_name == "ManualFirst"
+        assert user.last_name == "ManualLast"
+        assert user.phone == "+989121111111"
+
+
+def test_people_phone_and_birthday_extraction():
+    profile = {
+        "phoneNumbers": [{"value": "021123"}, {"canonicalForm": "+989121234567"}],
+        "birthdays": [{"date": {"year": 1990, "month": 3, "day": 21}}],
+    }
+    assert auth._extract_people_phone(profile) == "+989121234567"
+    assert auth._extract_people_birthdate(profile).isoformat() == "1990-03-21"
+
+
+@pytest.mark.parametrize(
+    "birthdays",
+    [
+        [{"date": {"month": 3, "day": 21}}],
+        [{"date": {"year": 1990, "month": 13, "day": 21}}],
+        [],
+    ],
+)
+def test_partial_or_invalid_people_birthday_is_skipped(birthdays):
+    assert auth._extract_people_birthdate({"birthdays": birthdays}) is None
+
+
+@pytest.mark.asyncio
+async def test_people_api_403_is_optional():
+    class ForbiddenClient:
+        async def get(self, url, **kwargs):
+            request = httpx.Request("GET", url)
+            response = httpx.Response(403, request=request)
+            raise httpx.HTTPStatusError("403 Forbidden", request=request, response=response)
+
+    assert await auth.fetch_google_people_profile("not-logged", ForbiddenClient(), "flow") == {}
+
+
+def test_people_data_fills_empty_phone_and_birthdate(oauth_client):
+    _, Session = oauth_client
+    with Session() as db:
+        user = User(email="empty@example.com", auth_provider="google")
+        db.add(user)
+        db.flush()
+        auth._apply_optional_people_data(
+            user,
+            {
+                "phoneNumbers": [{"canonicalForm": "+989121234567"}],
+                "birthdays": [{"date": {"year": 1990, "month": 3, "day": 21}}],
+            },
+            db,
+            "flow",
+        )
+        assert user.phone == "+989121234567"
+        assert user.birthdate.isoformat() == "1990-03-21"
+
+
+def test_people_data_preserves_existing_fields_and_skips_phone_conflict(oauth_client):
+    _, Session = oauth_client
+    with Session() as db:
+        owner = User(email="owner@example.com", phone="+989121234567")
+        existing = User(
+            email="existing-fields@example.com",
+            phone="+989129999999",
+            birthdate=datetime(1985, 1, 2).date(),
+        )
+        conflict = User(email="conflict@example.com")
+        db.add_all([owner, existing, conflict])
+        db.flush()
+        profile = {
+            "phoneNumbers": [{"canonicalForm": "+989121234567"}],
+            "birthdays": [{"date": {"year": 1990, "month": 3, "day": 21}}],
+        }
+        auth._apply_optional_people_data(existing, profile, db, "flow")
+        auth._apply_optional_people_data(conflict, profile, db, "flow")
+        assert existing.phone == "+989129999999"
+        assert existing.birthdate.isoformat() == "1985-01-02"
+        assert conflict.phone is None
+        assert conflict.birthdate.isoformat() == "1990-03-21"
 
 
 def test_google_callback_transport_failure_redirects_and_logs(oauth_client, monkeypatch, caplog):

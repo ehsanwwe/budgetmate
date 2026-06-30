@@ -159,6 +159,7 @@ class OnboardingStatus(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     family_name: Optional[str] = None
+    birthdate: Optional[DateType] = None
     province: Optional[str] = None
     city: Optional[str] = None
     income_range: Optional[str] = None

@@ -26,6 +26,7 @@ def get_onboarding_status(current_user: User = Depends(get_current_user)):
         first_name=current_user.first_name,
         last_name=current_user.last_name,
         family_name=current_user.family_name,
+        birthdate=current_user.birthdate,
         province=current_user.province,
         city=current_user.city,
         income_range=current_user.income_range,
