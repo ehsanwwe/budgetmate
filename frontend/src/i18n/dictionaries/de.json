@@ -91,9 +91,10 @@
       "privacy": "Ihre Daten werden nur auf Ihrem Gerät gespeichert. Es besteht keine Verbindung zu Bankkonten."
     },
     "phonePage": {
-      "title": "Telefonnummer eingeben",
-      "subtitle": "Wir senden Ihnen einen Bestätigungscode",
+      "title": "Bei Jibiaar anmelden",
+      "subtitle": "Wählen Sie eine der folgenden Methoden, um fortzufahren",
       "phoneDivider": "oder mit Telefonnummer anmelden",
+      "phoneSectionHelper": "Geben Sie Ihre Telefonnummer ein, um einen Bestätigungscode zu erhalten",
       "placeholder": "Telefonnummer",
       "helper": "Geben Sie Ihre Mobilnummer mit Ländervorwahl ein",
       "submitButton": "Weiter",

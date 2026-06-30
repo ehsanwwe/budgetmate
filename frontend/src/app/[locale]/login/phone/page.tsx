@@ -104,6 +104,10 @@ export default function LoginPhonePage() {
             <div className="h-px flex-1 bg-[#2d1812]/10" />
           </div>
 
+          <p className="mb-3 text-sm leading-relaxed text-[#2d1812]/60">
+            {t.phoneSectionHelper}
+          </p>
+
           <InternationalPhoneInput
             value={phone}
             onChange={handleChange}

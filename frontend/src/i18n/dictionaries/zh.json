@@ -76,7 +76,7 @@
       "subtitle": "管理您的预算，从智能助手获取建议，实现您的财务目标。",
       "secureLogin": "使用一次性验证码安全登录",
       "startButton": "开始",
-      "googleButton": "使用 Google 登录",
+      "googleButton": "使用 Google 继续",
       "googleError": "Google 登录失败，请重试。",
       "googleCompleting": "正在完成 Google 登录…",
       "learnMore": "了解更多",
@@ -91,9 +91,10 @@
       "privacy": "您的数据仅存储在您的设备上，不与任何银行账户相连。"
     },
     "phonePage": {
-      "title": "请输入手机号",
-      "subtitle": "我们将向您发送验证码",
+      "title": "登录 Jibiaar",
+      "subtitle": "请选择以下一种方式继续",
       "phoneDivider": "或使用手机号码登录",
+      "phoneSectionHelper": "请输入手机号码，我们会向您发送验证码",
       "placeholder": "手机号码",
       "helper": "请输入含国家代码的手机号",
       "submitButton": "继续",
