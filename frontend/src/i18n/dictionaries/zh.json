@@ -93,6 +93,7 @@
     "phonePage": {
       "title": "请输入手机号",
       "subtitle": "我们将向您发送验证码",
+      "phoneDivider": "或使用手机号码登录",
       "placeholder": "手机号码",
       "helper": "请输入含国家代码的手机号",
       "submitButton": "继续",

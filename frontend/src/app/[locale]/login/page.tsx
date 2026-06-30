@@ -6,7 +6,6 @@ import { Wallet, ShieldCheck, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
-import { getApiOrigin } from "@/lib/api-config";
 
 export default function LoginWelcomePage() {
   const router = useRouter();
@@ -26,10 +25,6 @@ export default function LoginWelcomePage() {
   }, [token, onboardingCompleted, router, locale]);
 
   const aboutPoints: string[] = Array.isArray(t.aboutPoints) ? t.aboutPoints : [];
-  const startGoogleLogin = () => {
-    window.location.assign(`${getApiOrigin()}/api/auth/google/login?locale=${locale}`);
-  };
-
   return (
     <div className="min-h-screen bg-[#f5f1eb] flex flex-col max-w-[440px] mx-auto w-full px-6" dir={dir}>
       {/* Progress bar */}
@@ -86,14 +81,6 @@ export default function LoginWelcomePage() {
           className="w-full py-4 rounded-full bg-[#2d1812] text-white font-semibold text-base hover:bg-[#3d2218] active:scale-[0.98] transition-all"
         >
           {t.startButton}
-        </button>
-
-        <button
-          onClick={startGoogleLogin}
-          className="w-full py-4 rounded-full bg-white border border-gray-300 text-[#2d1812] font-semibold text-base hover:bg-gray-50 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-        >
-          <span className="font-bold text-lg text-[#4285F4]" aria-hidden="true">G</span>
-          {t.googleButton}
         </button>
 
         {googleError && (

@@ -93,6 +93,7 @@
     "phonePage": {
       "title": "أدخل رقم هاتفك",
       "subtitle": "سنرسل لك رمز تحقق",
+      "phoneDivider": "أو تسجيل الدخول برقم الهاتف",
       "placeholder": "رقم الهاتف",
       "helper": "أدخل رقم هاتفك مع رمز البلد",
       "submitButton": "متابعة",

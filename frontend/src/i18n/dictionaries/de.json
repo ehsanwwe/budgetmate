@@ -93,6 +93,7 @@
     "phonePage": {
       "title": "Telefonnummer eingeben",
       "subtitle": "Wir senden Ihnen einen Bestätigungscode",
+      "phoneDivider": "oder mit Telefonnummer anmelden",
       "placeholder": "Telefonnummer",
       "helper": "Geben Sie Ihre Mobilnummer mit Ländervorwahl ein",
       "submitButton": "Weiter",

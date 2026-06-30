@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
 import InternationalPhoneInput from "@/components/auth/InternationalPhoneInput";
+import { getApiOrigin } from "@/lib/api-config";
 
 export default function LoginPhonePage() {
   const router = useRouter();
@@ -42,6 +43,10 @@ export default function LoginPhonePage() {
   function handleChange(val: string) {
     setPhone(val);
     if (error) setError("");
+  }
+
+  function startGoogleLogin() {
+    window.location.assign(`${getApiOrigin()}/api/auth/google/login?locale=${locale}`);
   }
 
   return (
@@ -84,6 +89,21 @@ export default function LoginPhonePage() {
           transition={{ delay: 0.2, duration: 0.3 }}
           className="pt-4"
         >
+          <button
+            type="button"
+            onClick={startGoogleLogin}
+            className="w-full py-4 rounded-full bg-white border border-[#2d1812]/15 text-[#2d1812] font-semibold text-base shadow-sm hover:bg-white/80 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+          >
+            <span className="font-bold text-lg text-[#4285F4]" aria-hidden="true">G</span>
+            {dict.auth.landing.googleButton}
+          </button>
+
+          <div className="flex items-center gap-3 py-6">
+            <div className="h-px flex-1 bg-[#2d1812]/10" />
+            <span className="shrink-0 text-xs text-[#2d1812]/45">{t.phoneDivider}</span>
+            <div className="h-px flex-1 bg-[#2d1812]/10" />
+          </div>
+
           <InternationalPhoneInput
             value={phone}
             onChange={handleChange}

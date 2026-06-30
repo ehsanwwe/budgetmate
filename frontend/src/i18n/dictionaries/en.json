@@ -93,6 +93,7 @@
     "phonePage": {
       "title": "Enter your phone number",
       "subtitle": "We'll send you a verification code",
+      "phoneDivider": "or sign in with phone number",
       "placeholder": "Phone number",
       "helper": "Enter your mobile number with country code",
       "submitButton": "Continue",
