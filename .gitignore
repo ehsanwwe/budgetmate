@@ -26,4 +26,6 @@ dist
 backend/.env
 frontend/.env
 backend/budgetmate.db
+client_secret*.json
+**/client_secret*.json
 frontend/src.zip

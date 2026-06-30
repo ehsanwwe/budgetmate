@@ -19,7 +19,11 @@ VALID_FINANCIAL_STATUSES = {
 
 class UserOut(BaseModel):
     id: int
-    phone: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    auth_provider: str = "local"
+    google_sub: Optional[str] = None
+    avatar_url: Optional[str] = None
     name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -150,7 +154,7 @@ class OnboardingStatus(BaseModel):
     onboarding_completed: bool
     needs_agreement: bool
     id: int
-    phone: str
+    phone: Optional[str] = None
     name: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None

@@ -60,6 +60,8 @@ PREFIX = "/api/v1"
 
 app.include_router(health.router, prefix=PREFIX)
 app.include_router(auth.router, prefix=PREFIX)
+# Google Console redirect URIs use /api/auth/...; existing /api/v1 auth remains unchanged.
+app.include_router(auth.google_router, prefix="/api")
 app.include_router(users.router, prefix=PREFIX)
 app.include_router(budgets.router, prefix=PREFIX)
 app.include_router(categories.router, prefix=PREFIX)

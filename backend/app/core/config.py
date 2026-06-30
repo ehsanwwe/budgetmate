@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     STARTER_FREE_TOKENS: int = 20000
     APP_TIMEZONE: str = "Asia/Tehran"
     AGENT_DEBUG_TRACE: bool = False
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
+    GOOGLE_OAUTH_FRONTEND_SUCCESS_URL: str = "http://localhost:3000/fa"
+    GOOGLE_OAUTH_FRONTEND_ERROR_URL: str = "http://localhost:3000/fa/login"
 
     @field_validator("DATABASE_URL")
     @classmethod

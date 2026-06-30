@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Wallet, ShieldCheck, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
@@ -9,9 +9,11 @@ import { isRTL } from "@/i18n/config";
 
 export default function LoginWelcomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { token, onboardingCompleted } = useAuthStore();
   const { locale, dict } = useLocale();
   const [showInfo, setShowInfo] = useState(false);
+  const googleError = searchParams.has("google_error");
   const dir = isRTL(locale) ? "rtl" : "ltr";
   const t = dict.auth.landing;
 
@@ -23,6 +25,10 @@ export default function LoginWelcomePage() {
   }, [token, onboardingCompleted, router, locale]);
 
   const aboutPoints: string[] = Array.isArray(t.aboutPoints) ? t.aboutPoints : [];
+  const startGoogleLogin = () => {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    window.location.assign(`${apiBase}/api/auth/google/login?locale=${locale}`);
+  };
 
   return (
     <div className="min-h-screen bg-[#f5f1eb] flex flex-col max-w-[440px] mx-auto w-full px-6" dir={dir}>
@@ -81,6 +87,20 @@ export default function LoginWelcomePage() {
         >
           {t.startButton}
         </button>
+
+        <button
+          onClick={startGoogleLogin}
+          className="w-full py-4 rounded-full bg-white border border-gray-300 text-[#2d1812] font-semibold text-base hover:bg-gray-50 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+        >
+          <span className="font-bold text-lg text-[#4285F4]" aria-hidden="true">G</span>
+          {t.googleButton}
+        </button>
+
+        {googleError && (
+          <p role="alert" className="text-center text-sm text-red-600">
+            {t.googleError}
+          </p>
+        )}
 
         <button
           onClick={() => setShowInfo(true)}

@@ -7,7 +7,11 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    phone = Column(String, unique=True, nullable=False, index=True)
+    phone = Column(String, unique=True, nullable=True, index=True)
+    email = Column(String, unique=True, nullable=True, index=True)
+    auth_provider = Column(String, nullable=False, default="local", server_default="local")
+    google_sub = Column(String, unique=True, nullable=True, index=True)
+    avatar_url = Column(String, nullable=True)
     name = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)

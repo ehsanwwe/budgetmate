@@ -4,7 +4,11 @@ import { persist } from "zustand/middleware";
 
 export interface User {
   id: number;
-  phone: string;
+  phone?: string;
+  email?: string;
+  auth_provider?: string;
+  google_sub?: string;
+  avatar_url?: string;
   name?: string;
   first_name?: string;
   last_name?: string;
