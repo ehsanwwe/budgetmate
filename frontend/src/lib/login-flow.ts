@@ -37,3 +37,19 @@ export function clearTemporaryLoginFlowState(): void {
     document.cookie = `${cookieName}=; Max-Age=0; Path=/; SameSite=Lax`;
   }
 }
+
+/** Fully exit authentication from the phone-login Back action. */
+export function clearLoginFlowAndAuthState(): void {
+  if (typeof window === "undefined") return;
+
+  clearTemporaryLoginFlowState();
+  useAuthStore.getState().logout();
+  useAuthStore.persist.clearStorage();
+
+  // Explicit removal keeps cleanup deterministic if the persistence adapter changes.
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+}
+import { useAuthStore } from "@/store/auth";
+
+const AUTH_STORAGE_KEY = "auth-storage";

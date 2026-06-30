@@ -7,9 +7,11 @@ import OnboardingLayout from "@/components/onboarding/OnboardingLayout";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { useLocale } from "@/i18n/LocaleContext";
+import { isRTL } from "@/i18n/config";
 import { t as tDict } from "@/i18n/getDictionary";
 import { onboardingDraft, OnboardingDraft } from "@/hooks/useOnboardingDraft";
 import { isoToJalaliParts } from "@/lib/fmt";
+import { loadLocationCities, loadLocationRegions } from "@/lib/location-catalog";
 
 const INCOME_VALUES = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
 const FINANCIAL_STATUS_VALUES = [
@@ -20,6 +22,7 @@ type FinancialStatusValue = typeof FINANCIAL_STATUS_VALUES[number];
 
 const JALALI_YEARS = Array.from({ length: 60 }, (_, i) => 1404 - i);
 const JALALI_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+const GREGORIAN_YEARS = Array.from({ length: 101 }, (_, i) => new Date().getFullYear() - i);
 
 export default function OnboardingProfilePage() {
   const router = useRouter();
@@ -27,6 +30,7 @@ export default function OnboardingProfilePage() {
   const userId = useAuthStore((s) => s.user?.id);
   const { locale, dict } = useLocale();
   const t = dict.onboarding.profilePage;
+  const rtl = isRTL(locale);
 
   const [name, setName] = useState("");
   const [familyName, setFamilyName] = useState("");
@@ -53,7 +57,7 @@ export default function OnboardingProfilePage() {
       return;
     }
 
-    api.get("/iran/provinces").then((r) => setProvinces(r.data.provinces)).catch(() => {});
+    loadLocationRegions(locale, api).then(setProvinces).catch(() => setProvinces([]));
 
     api
       .get("/onboarding/status")
@@ -77,7 +81,14 @@ export default function OnboardingProfilePage() {
         const mergedStatus = hasDraft ? draft.financialStatus : backendStatuses;
 
         // Birthdate: backend status doesn't expose Jalali components — use draft only
-        const importedBirthdate = status.birthdate ? isoToJalaliParts(status.birthdate) : null;
+        const importedBirthdate = status.birthdate
+          ? locale === "fa"
+            ? isoToJalaliParts(status.birthdate)
+            : (() => {
+                const [year, month, day] = status.birthdate.split("-");
+                return { year, month: String(Number(month)), day: String(Number(day)) };
+              })()
+          : null;
         setName(mergedName);
         setFamilyName(mergedFamily);
         setBirthYear(hasDraft ? draft.birthYear : importedBirthdate?.year || "");
@@ -125,10 +136,8 @@ export default function OnboardingProfilePage() {
         setCity("");
         return;
       }
-      api
-        .get(`/iran/cities?province=${encodeURIComponent(province)}`)
-        .then((r) => {
-          const loaded: string[] = r.data.cities;
+      loadLocationCities(locale, province, api)
+        .then((loaded) => {
           setCities(loaded);
           const pending = pendingCityRef.current;
           pendingCityRef.current = "";
@@ -136,7 +145,7 @@ export default function OnboardingProfilePage() {
         })
         .catch(() => {});
     });
-  }, [province]);
+  }, [province, locale]);
 
   // Auto-save all form fields to localStorage draft after hydration
   useEffect(() => {
@@ -168,7 +177,9 @@ export default function OnboardingProfilePage() {
         family_name: familyName.trim(),
       };
       if (birthYear && birthMonth && birthDay) {
-        body.birthdate = jalaliToGregorian(+birthYear, +birthMonth, +birthDay);
+        body.birthdate = locale === "fa"
+          ? jalaliToGregorian(+birthYear, +birthMonth, +birthDay)
+          : `${birthYear}-${birthMonth.padStart(2, "0")}-${birthDay.padStart(2, "0")}`;
       }
       if (province) body.province = province;
       if (city) body.city = city;
@@ -196,6 +207,10 @@ export default function OnboardingProfilePage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const monthsMap = (dict as any).jalaliMonths as Record<string, string>;
+  const calendarYears = locale === "fa" ? JALALI_YEARS : GREGORIAN_YEARS;
+  const monthLabel = (month: number) => locale === "fa"
+    ? monthsMap?.[String(month)] ?? month
+    : new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2020, month - 1, 1)));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const incomeMap = (dict as any).incomeRanges as Record<string, string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -296,7 +311,7 @@ export default function OnboardingProfilePage() {
                       <option value="">{t.monthPlaceholder}</option>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                           <option key={m} value={m}>
-                            {monthsMap?.[String(m)] ?? m}
+                            {monthLabel(m)}
                           </option>
                       ))}
                     </select>
@@ -306,7 +321,7 @@ export default function OnboardingProfilePage() {
                         onChange={(e) => setBirthYear(e.target.value)}
                     >
                       <option value="">{t.yearPlaceholder}</option>
-                      {JALALI_YEARS.map((y) => (
+                      {calendarYears.map((y) => (
                           <option key={y} value={y}>
                             {y}
                           </option>
@@ -370,7 +385,7 @@ export default function OnboardingProfilePage() {
                             key={value}
                             type="button"
                             onClick={() => setIncomeRange(selected ? "" : value)}
-                            className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 text-right text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
+                            className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 ${rtl ? "text-right" : "text-left"} text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
                                 selected
                                     ? "border-[#2d1812] bg-[#2d1812] text-white shadow-[0_8px_20px_rgba(45,24,18,0.16)]"
                                     : "border-[#2d1812]/10 bg-white/75 text-[#2d1812]/75 hover:border-[#2d1812]/20 hover:bg-white"
@@ -404,7 +419,7 @@ export default function OnboardingProfilePage() {
                             onClick={() => setFinancialStatus((current) =>
                               selected ? current.filter((item) => item !== value) : [...current, value]
                             )}
-                            className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 text-right text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
+                            className={`min-h-8 rounded-[12px] border px-2.5 py-1.5 ${rtl ? "text-right" : "text-left"} text-[11px] font-medium leading-4 transition-all sm:min-h-10 sm:rounded-[15px] sm:px-3 sm:py-2 sm:text-[12px] sm:leading-5 ${
                                 selected
                                     ? "border-[#10b981] bg-[#10b981] text-white shadow-[0_8px_20px_rgba(16,185,129,0.16)]"
                                     : "border-[#2d1812]/10 bg-white/75 text-[#2d1812]/75 hover:border-[#2d1812]/20 hover:bg-white"

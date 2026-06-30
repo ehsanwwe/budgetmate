@@ -9,7 +9,7 @@ import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
 import InternationalPhoneInput from "@/components/auth/InternationalPhoneInput";
 import { getApiOrigin } from "@/lib/api-config";
-import { clearTemporaryLoginFlowState } from "@/lib/login-flow";
+import { clearLoginFlowAndAuthState } from "@/lib/login-flow";
 
 export default function LoginPhonePage() {
   const router = useRouter();
@@ -51,7 +51,7 @@ export default function LoginPhonePage() {
   }
 
   function exitLoginFlow() {
-    clearTemporaryLoginFlowState();
+    clearLoginFlowAndAuthState();
     router.replace("/");
   }
 
