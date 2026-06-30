@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir \
     -i https://mirror.abrha.net/repository/pypi/simple \
     -r requirements.txt
 
+
+RUN alembic upgrade head
+
 COPY backend .
 
 EXPOSE 8000
