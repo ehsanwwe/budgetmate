@@ -30,6 +30,31 @@ _FINANCIAL_STATUS_GUIDANCE = {
     "other": "از وضعیت مالی با دقت و بدون فرض پیش‌فرض برخورد کن.",
 }
 
+_INCOME_RANGE_BOUNDS = {
+    "IRT": (10_000_000, 20_000_000, 40_000_000, 80_000_000),
+    "USD": (1_000, 2_000, 4_000, 8_000),
+    "EUR": (1_000, 2_000, 4_000, 8_000),
+    "CNY": (7_000, 14_000, 28_000, 56_000),
+    "AED": (4_000, 8_000, 16_000, 32_000),
+    "SAR": (4_000, 8_000, 16_000, 32_000),
+}
+
+
+def _localized_income_range(code: str | None, currency: str) -> str | None:
+    if not code:
+        return None
+    if code == "prefer_not":
+        return "prefer_not_to_say"
+    low, second, third, high = _INCOME_RANGE_BOUNDS.get(currency, _INCOME_RANGE_BOUNDS["IRT"])
+    labels = {
+        "lt10": f"less than {low:,} {currency}",
+        "10to20": f"{low:,} to {second:,} {currency}",
+        "20to40": f"{second:,} to {third:,} {currency}",
+        "40to80": f"{third:,} to {high:,} {currency}",
+        "gt80": f"more than {high:,} {currency}",
+    }
+    return labels.get(code, code)
+
 
 def build_agent_context(user: User, db: Session) -> dict:
     context = build_finance_context(user, db)
@@ -38,11 +63,14 @@ def build_agent_context(user: User, db: Session) -> dict:
     locale_info = LOCALE_META.get(preferred_language, LOCALE_META[DEFAULT_LOCALE])
     direction = locale_info["direction"]
 
+    income_range_code = context["user"].get("income_range")
     payload = {
         "user": {
             "id": user.id,
             "name": user.display_name or user.name,
             "income_range": context["user"].get("income_range"),
+            "income_range_display": _localized_income_range(income_range_code, preferred_currency),
+            "income_range_currency": preferred_currency,
             "monthly_income": context["user"].get("monthly_income"),
             "chat_mode": context["user"].get("chat_mode"),
             "preferred_language": preferred_language,

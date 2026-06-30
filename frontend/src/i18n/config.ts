@@ -27,7 +27,7 @@ export const LOCALE_META: Record<Locale, LocaleMeta> = {
     nativeName: "العربية",
     emoji: "🇸🇦",
     direction: "rtl",
-    defaultCurrency: "IRT",
+    defaultCurrency: "AED",
     isDefault: false,
   },
   en: {

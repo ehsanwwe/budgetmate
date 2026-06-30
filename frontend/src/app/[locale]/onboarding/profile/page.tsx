@@ -12,8 +12,8 @@ import { t as tDict } from "@/i18n/getDictionary";
 import { onboardingDraft, OnboardingDraft } from "@/hooks/useOnboardingDraft";
 import { isoToJalaliParts } from "@/lib/fmt";
 import { loadLocationCities, loadLocationRegions } from "@/lib/location-catalog";
+import { getLocalizedFinanceProfile } from "@/lib/locale-finance";
 
-const INCOME_VALUES = ["lt10", "10to20", "20to40", "40to80", "gt80", "prefer_not"] as const;
 const FINANCIAL_STATUS_VALUES = [
   "stable_income", "irregular_income", "overspending", "in_debt",
   "saving_for_goal", "low_income_pressure", "planning_only", "other",
@@ -31,6 +31,7 @@ export default function OnboardingProfilePage() {
   const { locale, dict } = useLocale();
   const t = dict.onboarding.profilePage;
   const rtl = isRTL(locale);
+  const financeProfile = getLocalizedFinanceProfile(locale);
 
   const [name, setName] = useState("");
   const [familyName, setFamilyName] = useState("");
@@ -212,8 +213,6 @@ export default function OnboardingProfilePage() {
     ? monthsMap?.[String(month)] ?? month
     : new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2020, month - 1, 1)));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const incomeMap = (dict as any).incomeRanges as Record<string, string>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const financialStatusMap = (dict as any).financialStatus as Record<string, string> | undefined;
 
   return (
@@ -377,9 +376,8 @@ export default function OnboardingProfilePage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                  {INCOME_VALUES.map((value) => {
+                  {financeProfile.incomeRanges.map(({ value, label }) => {
                     const selected = incomeRange === value;
-                    const label = incomeMap?.[value] ?? value;
                     return (
                         <button
                             key={value}
