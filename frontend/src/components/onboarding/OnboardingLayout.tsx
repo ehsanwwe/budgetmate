@@ -45,39 +45,41 @@ export default function OnboardingLayout({
       dir={dir}
     >
       {/* Top bar: back + progress dots */}
-      <div className="flex items-center justify-between px-5 pt-12 pb-4">
-        {showBack ? (
-          <button
-            onClick={handleBack}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-white/70 shadow-sm hover:bg-white transition-colors"
-            aria-label={backLabel}
-          >
-            <ArrowRight className={`w-5 h-5 text-[#2d1812] ${dir === "ltr" ? "rotate-180" : ""}`} />
-          </button>
-        ) : (
+      <div className="px-5 pt-12 pb-4">
+        <div className="mx-auto flex w-full max-w-[440px] items-center justify-between">
+          {showBack ? (
+            <button
+              onClick={handleBack}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-white/70 shadow-sm hover:bg-white transition-colors"
+              aria-label={backLabel}
+            >
+              <ArrowRight className={`w-5 h-5 text-[#2d1812] ${dir === "ltr" ? "rotate-180" : ""}`} />
+            </button>
+          ) : (
+            <div className="w-10" />
+          )}
+
+          {totalSteps && currentStep ? (
+            <div className="flex gap-1.5">
+              {Array.from({ length: totalSteps }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`rounded-full transition-all duration-300 ${
+                    i < currentStep
+                      ? "w-6 h-2 bg-[#2d1812]"
+                      : i === currentStep - 1
+                      ? "w-6 h-2 bg-[#2d1812]"
+                      : "w-2 h-2 bg-[#2d1812]/20"
+                  }`}
+                />
+              ))}
+            </div>
+          ) : (
+            <div />
+          )}
+
           <div className="w-10" />
-        )}
-
-        {totalSteps && currentStep ? (
-          <div className="flex gap-1.5">
-            {Array.from({ length: totalSteps }).map((_, i) => (
-              <div
-                key={i}
-                className={`rounded-full transition-all duration-300 ${
-                  i < currentStep
-                    ? "w-6 h-2 bg-[#2d1812]"
-                    : i === currentStep - 1
-                    ? "w-6 h-2 bg-[#2d1812]"
-                    : "w-2 h-2 bg-[#2d1812]/20"
-                }`}
-              />
-            ))}
-          </div>
-        ) : (
-          <div />
-        )}
-
-        <div className="w-10" />
+        </div>
       </div>
 
       {/* Page content */}
