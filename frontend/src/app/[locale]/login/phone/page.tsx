@@ -9,6 +9,7 @@ import { useLocale } from "@/i18n/LocaleContext";
 import { isRTL } from "@/i18n/config";
 import InternationalPhoneInput from "@/components/auth/InternationalPhoneInput";
 import { getApiOrigin } from "@/lib/api-config";
+import { clearTemporaryLoginFlowState } from "@/lib/login-flow";
 
 export default function LoginPhonePage() {
   const router = useRouter();
@@ -49,6 +50,11 @@ export default function LoginPhonePage() {
     window.location.assign(`${getApiOrigin()}/api/auth/google/login?locale=${locale}`);
   }
 
+  function exitLoginFlow() {
+    clearTemporaryLoginFlowState();
+    router.replace("/");
+  }
+
   return (
     <motion.div
       initial={{ x: 50, opacity: 0 }}
@@ -60,7 +66,7 @@ export default function LoginPhonePage() {
       {/* Back */}
       <div className="pt-12 pb-6">
         <button
-          onClick={() => router.back()}
+          onClick={exitLoginFlow}
           className="flex items-center justify-center w-10 h-10 rounded-full bg-white/70 shadow-sm hover:bg-white transition-colors"
           aria-label={dict.common.back}
         >
