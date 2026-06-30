@@ -293,6 +293,20 @@ npm run build
 
 ---
 
+## Adding a new locale
+
+Adding a locale requires locale-dependent data and behavior, not only translated dictionary text.
+
+1. **Register the locale:** add its code to `frontend/src/i18n/config.ts` with its native name, `rtl` or `ltr` direction, default currency, and default country/region assumptions. Add the equivalent backend locale/currency support where applicable.
+2. **Add dictionary translations:** provide UI and onboarding labels, location placeholders, date/month labels, validation messages, and any locale-specific helper text.
+3. **Add location data:** update `frontend/src/lib/location-catalog.ts` with regions and cities. Persian delegates to the backend Iran catalog; other current locales use the frontend catalog abstraction.
+4. **Add financial localization:** update `frontend/src/lib/locale-finance.ts` with the default currency, symbol, and average-monthly-income labels. Stored income values must remain stable keys (`lt10`, `10to20`, `20to40`, `40to80`, `gt80`, `prefer_not`), never translated labels. Update backend assistant-context formatting if the currency is new; do not invent currency conversions.
+5. **Configure date behavior:** Persian uses Jalali selectors and converts to Gregorian before submitting. Current non-Persian locales use Gregorian selectors and submit `YYYY-MM-DD` directly. A future calendar system should be added behind the same locale-aware date boundary while keeping the backend Gregorian.
+6. **Verify direction:** register RTL/LTR metadata and ensure clickable onboarding options use right alignment for RTL and left alignment for LTR.
+7. **Test manually:** open the localized onboarding profile, verify income currency, location data, calendar behavior, direction, draft restoration, and that submitted payloads retain backend-compatible stable keys. Run frontend lint/build and relevant backend tests.
+
+---
+
 ## Important Behavior Rules
 
 - Chat history is context only; old messages must not create new writes.
