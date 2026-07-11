@@ -3,11 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.models.agent_idempotency import PendingAgentIntent
 from app.models.chat import ChatMessage
+from app.models.future_commitment import FutureCommitment
+from app.models.personal_cfo import FinancialFact
+from app.models.transaction import Transaction
 from app.services.agent_orchestrator.goal_intake import STATE_CANCELLED, STATE_CONSULTATION
+
+# fact_type reserved for per-conversation reasoning state (exclusions,
+# baselines, user-stated balance). See personal_cfo/conversation_state.py.
+CHAT_REASONING_FACT_TYPE = "chat_reasoning_state"
 
 
 @dataclass(frozen=True)
@@ -21,7 +29,10 @@ def clear_chat_history_and_transient_state(db: Session, user_id: int) -> ChatCle
     """Clear user-visible chat history and cancel transient conversation state.
 
     Durable financial records, CFO memories/facts/persona, goals, commitments,
-    budgets, and audit logs are intentionally left untouched.
+    budgets, and audit logs are intentionally left untouched — but their
+    chat-provenance link is dropped (source_message_id → NULL), and any
+    conversational-only reasoning exclusions are deactivated. This means:
+    "everything from this chat" queries after clear will match zero rows.
     """
     now = datetime.utcnow()
 
@@ -45,6 +56,31 @@ def clear_chat_history_and_transient_state(db: Session, user_id: int) -> ChatCle
         intent.status = "cancelled"
         intent.consumed_at = now
         intent.updated_at = now
+
+    # Detach chat provenance so a later "delete everything from this chat"
+    # cannot match records created in the previous, now-cleared conversation.
+    db.execute(
+        update(Transaction)
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.source_message_id.isnot(None))
+        .values(source_message_id=None)
+    )
+    db.execute(
+        update(FutureCommitment)
+        .where(FutureCommitment.user_id == user_id)
+        .where(FutureCommitment.source_message_id.isnot(None))
+        .values(source_message_id=None)
+    )
+
+    # Deactivate conversation-only reasoning state (exclusions, baselines,
+    # stated balance). Persistent CFO facts survive.
+    db.execute(
+        update(FinancialFact)
+        .where(FinancialFact.user_id == user_id)
+        .where(FinancialFact.fact_type == CHAT_REASONING_FACT_TYPE)
+        .where(FinancialFact.is_active.is_(True))
+        .values(is_active=False)
+    )
 
     cleared_messages = (
         db.query(ChatMessage)

@@ -40,6 +40,12 @@ class AgentPlanStep(StrictModel):
     user_visible: bool = False
     confidence: float = Field(ge=0, le=1, default=0)
     source_scope: SourceScope = SourceScope.current_message
+    # For DELETE steps: bulk_scope=True acknowledges the LLM's intent to delete
+    # multiple matching rows. Without this flag, a filter-based DELETE (i.e. not
+    # by explicit id/id-list) whose SELECT matches more than one row is rejected
+    # by the executor. This prevents singular requests like "delete the coffee
+    # expense" from silently removing many similar rows.
+    bulk_scope: bool = False
 
 
 class AgentPlan(StrictModel):
@@ -64,6 +70,7 @@ class AgentExecutionResult(StrictModel):
     updated_id: Optional[int] = None
     deleted_ids: list[int] = Field(default_factory=list)
     deleted_row_count: int = 0
+    ambiguous_candidates: list[dict[str, Any]] = Field(default_factory=list)
     summary: Optional[str] = None
     rejected_reason: Optional[str] = None
     error: Optional[str] = None

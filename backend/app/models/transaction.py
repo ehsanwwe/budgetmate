@@ -21,6 +21,10 @@ class Transaction(Base):
     description = Column(String, nullable=True)
     date = Column(Date, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Chat provenance: id of the user chat_message that caused this row to be
+    # created via the agent. NULL for rows created outside chat (manual UI
+    # entries) or rows whose originating chat_message has since been cleared.
+    source_message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True, index=True)
 
     category = relationship("Category")
 

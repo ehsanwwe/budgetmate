@@ -138,6 +138,7 @@ class SqlExecutor:
         validation: SqlValidationResult,
         intent: str,
         seen_fingerprints: set[str] | None = None,
+        source_message_id: int | None = None,
     ) -> AgentExecutionResult:
         if not validation.allowed:
             audit_operation(db, user.id, intent, step, "rejected", validation.rejected_reason, False)
@@ -289,6 +290,30 @@ class SqlExecutor:
                 )
 
             if validation.operation_type == AgentOperationType.delete:
+                ambiguity = self._delete_ambiguity_check(db, user, validation, step)
+                if ambiguity is not None:
+                    audit_operation(
+                        db,
+                        user.id,
+                        intent,
+                        step,
+                        "rejected",
+                        "ambiguous filter delete requires bulk_scope=true",
+                        False,
+                    )
+                    return AgentExecutionResult(
+                        step_id=step.step_id,
+                        operation_type=AgentOperationType.delete,
+                        allowed=True,
+                        executed=False,
+                        deleted_ids=[],
+                        deleted_row_count=0,
+                        ambiguous_candidates=ambiguity,
+                        rejected_reason="ambiguous_delete_requires_clarification",
+                        summary=(
+                            f"refused ambiguous delete — {len(ambiguity)} candidates matched"
+                        ),
+                    )
                 deleted_ids = self._execute_delete(db, user, validation)
                 summary = {"deleted_ids": deleted_ids, "deleted_count": len(deleted_ids)}
                 audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
@@ -321,7 +346,7 @@ class SqlExecutor:
                     summary=f"updated row {updated_id}",
                 )
 
-            inserted_id = self._execute_insert(db, user, validation)
+            inserted_id = self._execute_insert(db, user, validation, source_message_id=source_message_id)
             summary = {"inserted_id": inserted_id}
             audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
             self._record_operation_event(db, user.id, fingerprint, "insert", validation.table_name or "", inserted_id, validation.params)
@@ -528,6 +553,74 @@ class SqlExecutor:
 
         return None
 
+    def _delete_ambiguity_check(
+        self,
+        db: Session,
+        user: User,
+        validation: SqlValidationResult,
+        step: AgentPlanStep,
+    ) -> list[dict[str, Any]] | None:
+        """Guard against silent bulk deletion.
+
+        Returns the list of candidate rows when the DELETE is refused as
+        ambiguous, or None when it is safe to proceed.
+
+        Rules:
+          - Delete by ``id = :id`` or ``id IN (:a, :b, ...)`` — explicit; allow.
+          - Delete with ``bulk_scope=True`` on the plan step — LLM has confirmed
+            it intends a bulk delete; allow.
+          - Otherwise (filter delete without bulk_scope): resolve the candidate
+            row set; allow only when exactly one row matches. If 0 or >1 match,
+            return the candidates so the composer can ask for clarification.
+        """
+        if step.bulk_scope:
+            return None
+        base_where = self._extract_where(validation.sql or "")
+        if self._is_explicit_id_filter(base_where):
+            return None
+        table = validation.table_name or ""
+        policy = get_policy(table)
+        if not policy:
+            return None
+        scoped_where = base_where
+        params = dict(validation.params)
+        if policy.user_scoped and policy.user_id_column:
+            scoped_where = f"({base_where}) AND {policy.user_id_column} = :__current_user_id"
+            params["__current_user_id"] = user.id
+        # Read a preview of matched rows so the composer can ask about them.
+        select_cols = self._preview_columns_for_table(table)
+        preview_sql = (
+            f"SELECT {', '.join(select_cols)} FROM {table} WHERE {scoped_where} LIMIT 10"
+        )
+        rows = db.execute(text(preview_sql), params).mappings().all()
+        candidates = [
+            {key: self._json_value(value) for key, value in row.items()} for row in rows
+        ]
+        if len(candidates) <= 1:
+            return None
+        return candidates
+
+    @staticmethod
+    def _is_explicit_id_filter(where_clause: str) -> bool:
+        """True if WHERE selects rows by explicit id / id list only."""
+        w = (where_clause or "").strip().lower()
+        if re.fullmatch(r"id\s*=\s*:[a-zA-Z_][\w]*", w):
+            return True
+        if re.fullmatch(
+            r"id\s+in\s*\(\s*:[a-zA-Z_][\w]*(?:\s*,\s*:[a-zA-Z_][\w]*)*\s*\)",
+            w,
+        ):
+            return True
+        return False
+
+    @staticmethod
+    def _preview_columns_for_table(table: str) -> list[str]:
+        if table == "transactions":
+            return ["id", "amount", "type", "description", "date"]
+        if table == "future_commitments":
+            return ["id", "title", "amount", "due_date", "status"]
+        return ["id"]
+
     def _execute_delete(self, db: Session, user: User, validation: SqlValidationResult) -> list[int]:
         """Execute a policy-approved DELETE, scoped to the authenticated user.
 
@@ -596,15 +689,21 @@ class SqlExecutor:
             rows.append({key: self._json_value(value) for key, value in row.items()})
         return rows
 
-    def _execute_insert(self, db: Session, user: User, validation: SqlValidationResult) -> int:
+    def _execute_insert(
+        self,
+        db: Session,
+        user: User,
+        validation: SqlValidationResult,
+        source_message_id: int | None = None,
+    ) -> int:
         table = validation.table_name
         params = dict(validation.params)
         if table == "transactions":
-            return self._insert_transaction(db, user, params)
+            return self._insert_transaction(db, user, params, source_message_id=source_message_id)
         if table == "goals":
             return self._insert_goal(db, user, params)
         if table == "future_commitments":
-            return self._insert_future_commitment(db, user, params)
+            return self._insert_future_commitment(db, user, params, source_message_id=source_message_id)
         if table == "financial_memories":
             return self._insert_memory(db, user, params)
         if table == "behavior_insights":
@@ -638,7 +737,13 @@ class SqlExecutor:
             return self._update_warning(db, user, row_id, assignments, params)
         raise ValueError("UPDATE on this table is not enabled")
 
-    def _insert_transaction(self, db: Session, user: User, params: dict[str, Any]) -> int:
+    def _insert_transaction(
+        self,
+        db: Session,
+        user: User,
+        params: dict[str, Any],
+        source_message_id: int | None = None,
+    ) -> int:
         category_id = params.get("category_id")
         if category_id is not None:
             category = db.query(Category).filter(Category.id == int(category_id)).first()
@@ -653,6 +758,23 @@ class SqlExecutor:
             raise ValueError("transaction type must be expense or income")
         tx_date = normalize_date(params.get("date"))
 
+        # Deterministic uncertain-income guard: an income row can only be
+        # persisted when the money has actually arrived. A future-dated
+        # income means the payment has NOT been received and MUST NOT be
+        # stored as recorded income. See planner prompt for the LLM-side
+        # reasoning; this is the executor-level safety net.
+        from datetime import date as _date
+        today_local = _date.today()
+        if (
+            tx_type_raw == "income"
+            and tx_date is not None
+            and tx_date > today_local
+        ):
+            raise ValueError(
+                "future-dated income cannot be persisted as received; "
+                "record it as expected income guidance instead"
+            )
+
         txn = Transaction(
             user_id=user.id,
             category_id=int(category_id) if category_id is not None else None,
@@ -660,6 +782,7 @@ class SqlExecutor:
             type=TransactionType.income if tx_type_raw == "income" else TransactionType.expense,
             description=str(params.get("description") or ("درآمد" if tx_type_raw == "income" else "هزینه")),
             date=tx_date,
+            source_message_id=source_message_id,
         )
         db.add(txn)
         db.commit()
@@ -692,7 +815,13 @@ class SqlExecutor:
         db.refresh(goal)
         return int(goal.id)
 
-    def _insert_future_commitment(self, db: Session, user: User, params: dict[str, Any]) -> int:
+    def _insert_future_commitment(
+        self,
+        db: Session,
+        user: User,
+        params: dict[str, Any],
+        source_message_id: int | None = None,
+    ) -> int:
         title = str(params.get("title") or "").strip()
         if not title:
             raise ValueError("future commitment title is required")
@@ -713,6 +842,7 @@ class SqlExecutor:
             status=str(params.get("status") or "pending")[:30],
             source=str(params.get("source") or "chat")[:50],
             metadata_json=self._json_param(params.get("metadata_json")) if params.get("metadata_json") is not None else None,
+            source_message_id=source_message_id,
         )
         db.add(row)
         db.commit()

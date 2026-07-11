@@ -67,18 +67,49 @@ Return ONLY valid JSON — no markdown, no prose:
 }}
 
 user_intent values:
-- expense: already-completed payment ("خریدم", "دادم", "پرداخت کردم", "هزینه کردم")
-- income: received money ("گرفتم", "واریز شد", "حقوق اومد", "درآمد داشتم")
+- expense: already-completed payment ("خریدم", "دادم", "پرداخت کردم", "هزینه کردم") — money has actually left the user's pocket / account
+- income: received money that has ACTUALLY ARRIVED ("گرفتم", "واریز شد", "حقوق اومد", "درآمد داشتم")
 - future_commitment: binding future obligation ("چک دارم", "قسط دارم", "باید اجاره بدم", "بدهی دارم")
 - goal_desire: non-binding wish to buy/save ("میخوام بخرم", "دوست دارم بخرم", "میخوام پس‌انداز کنم")
 - explicit_goal_add: explicitly requesting goal creation WITH all required info ("یک هدف اضافه کن X مبلغ Y تا Z")
 - goal_question: asking about an existing goal progress or deadline ("چقدر مونده", "برای همون تور چقدر باید سیو کنم")
 - budget_question: asking about available budget or spending summary
 - advice_question: asking for financial advice/analysis
-- cancel_flow: wants to cancel an ongoing conversation flow ("بیخیال", "ولش کن", "منصرف شدم", "فراموشش کن", "نمیخوام", "لغو")
+- cancel_flow: PURE cancellation with NO destructive or informational request attached ("بیخیال", "ولش کن", "منصرف شدم", "فراموشش کن", "نمیخوام", "لغو" when they mean "do nothing, drop this pending question")
 - answer_pending_question: answering a question the assistant just asked (amount, date, or add/consult choice)
 - invalid_both_choice: user wants "both" options when only one can proceed ("هر دو", "هردو", "جفتش", "both")
-- other: none of the above
+- other: none of the above — includes deletion requests, invalidation requests, reasoning-context requests, balance questions, and mixed messages that the planner should handle
+
+CANCEL vs DELETE / INVALIDATION — CRITICAL:
+Cancellation-style words ("بیخیال", "ولش کن", "فراموشش کن", "forget it", "never mind", "leave it") are NOT always cancel_flow. They are only cancel_flow when the entire message is asking the assistant to do nothing.
+
+If the same message ALSO asks to:
+  - delete/remove/erase records ("پاک کن", "حذف کن", "delete", "remove", "erase"),
+  - ignore records for the current calculation ("قبلی‌ها رو حساب نکن", "ignore those in the plan", "start from here"),
+  - answer a new question,
+  - register a new transaction/commitment,
+then:
+  - user_intent MUST NOT be cancel_flow
+  - user_intent MUST be "other" (or expense/income if applicable)
+  - should_cancel_pending_flow MUST be false
+  - should_bypass_goal_intake MUST be true
+  - The planner will read the full message and decide the right tool call.
+
+Examples of mixed messages that are NOT cancel_flow:
+  - «ولش کن، هرچی تراکنش گفتم پاک کن» → other + should_bypass_goal_intake=true (the user wants deletion)
+  - «forget the previous plan and delete the transactions I entered» → other + should_bypass_goal_intake=true
+  - «قبلی‌ها رو حساب نکن، از اول شروع کنیم» → other + should_bypass_goal_intake=true (invalidation, not cancellation)
+
+RECEIVED vs UNCERTAIN INCOME — CRITICAL:
+user_intent=income is ONLY for income that has actually been received.
+If the message describes income as maybe/likely/pending/scheduled/expected:
+  - «شاید ۵ میلیون بگیرم», «احتمالاً حقوقم تا هشتم میاد», «اگر پول پروژه بیاد ۲۰ میلیون می‌گیرم»,
+    «حقوقم قطعیه ولی هفته بعد می‌آید», «probably», «might», «expected next week»,
+then:
+  - user_intent MUST be "other"
+  - action.can_write MUST be false
+  - action.write_type MUST be null
+This lets the planner keep the money as forecast/scenario and NOT insert a transaction.
 
 referenced_entities:
 - goal_title: title of an EXISTING goal being asked about

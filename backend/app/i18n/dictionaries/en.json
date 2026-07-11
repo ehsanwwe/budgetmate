@@ -93,6 +93,9 @@
     "commitment_due_date": ", due {date}",
     "commitment_due_month": ", {month}",
     "delete_success": "{count} record(s) deleted.",
-    "delete_no_match": "I couldn't find a matching record to delete."
+    "delete_no_match": "I couldn't find a matching record to delete.",
+    "delete_partial": "{deleted} record(s) deleted; {missed} delete request(s) matched nothing.",
+    "delete_ambiguous": "Multiple records matched that description. To avoid deleting the wrong one, I did not delete anything. Please specify which one you meant.",
+    "numeric_inconsistency": "My numeric proposal did not add up against the amount available, so I'm holding off on a precise allocation to avoid giving you wrong numbers. If you tell me your available amount again, I'll work out a split that adds up correctly."
   }
 }

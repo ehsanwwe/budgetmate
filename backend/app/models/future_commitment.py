@@ -23,5 +23,8 @@ class FutureCommitment(Base):
     status = Column(String, nullable=False, default="pending", index=True)
     source = Column(String, nullable=False, default="chat")
     metadata_json = Column(JSON, nullable=True)
+    # Chat provenance: originating user chat message id (NULL when not
+    # created via chat or when the originating chat message has been cleared).
+    source_message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

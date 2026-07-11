@@ -60,6 +60,7 @@ class AgentOrchestrator:
         history: list[dict] | None = None,
         chat_mode: str | None = None,
         client_message_id: str | None = None,
+        source_message_id: int | None = None,
     ) -> AgentFinalResponse:
         locale: str = getattr(user, "language", None) or "fa"
 
@@ -81,7 +82,9 @@ class AgentOrchestrator:
                 )
             self._mark_processing(db, user.id, client_message_id)
 
-        response = await self._process(db, user, user_message, history, chat_mode, locale)
+        response = await self._process(
+            db, user, user_message, history, chat_mode, locale, source_message_id
+        )
 
         if client_message_id and response.message:
             self._store_response(db, user.id, client_message_id, response.message)
@@ -96,6 +99,7 @@ class AgentOrchestrator:
         history: list[dict] | None,
         chat_mode: str | None,
         locale: str,
+        source_message_id: int | None = None,
     ) -> AgentFinalResponse:
         db_world = render_db_world(db.get_bind())
         finance_context = build_agent_context(user, db)
@@ -188,7 +192,9 @@ class AgentOrchestrator:
                     had_repairable_failure = True
                     break
 
-                result = self._validate_and_execute(db, user, plan, step, seen_fingerprints)
+                result = self._validate_and_execute(
+                    db, user, plan, step, seen_fingerprints, source_message_id=source_message_id
+                )
                 if settings.AGENT_DEBUG_TRACE:
                     logger.info(
                         "agent step validation step_id=%s operation=%s allowed=%s executed=%s skipped_duplicate=%s",
@@ -231,6 +237,7 @@ class AgentOrchestrator:
         plan: AgentPlan,
         step: AgentPlanStep,
         seen_fingerprints: set[str],
+        source_message_id: int | None = None,
     ) -> AgentExecutionResult:
         try:
             validation = self.validator.validate(step.operation_type, step.table_name, step.sql, step.params)
@@ -243,7 +250,15 @@ class AgentOrchestrator:
                 executed=False,
                 rejected_reason=str(exc),
             )
-        return self.executor.execute(db, user, step, validation, plan.intent, seen_fingerprints)
+        return self.executor.execute(
+            db,
+            user,
+            step,
+            validation,
+            plan.intent,
+            seen_fingerprints,
+            source_message_id=source_message_id,
+        )
 
     def _is_clearly_malicious(self, result: AgentExecutionResult) -> bool:
         reason = (result.rejected_reason or result.error or "").lower()

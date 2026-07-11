@@ -288,6 +288,7 @@ def test_executor_deletes_all_expenses_today_by_filter(db):
         table_name="transactions",
         sql="DELETE FROM transactions WHERE type = :t AND date = :d",
         params={"t": "expense", "d": local_today().isoformat()},
+        bulk_scope=True,  # explicit bulk delete; ambiguity guard is bypassed
     )
     validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
     result = SqlExecutor().execute(db, user(db), step, validation, "delete_test")

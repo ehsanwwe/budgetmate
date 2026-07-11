@@ -11,6 +11,7 @@ from app.models.future_commitment import FutureCommitment
 from app.models.goal import Goal
 from app.models.transaction import Transaction, TransactionType
 from app.models.user import User
+from app.services.personal_cfo.conversation_state import get_active_state
 
 
 def _month_range() -> tuple[date, date]:
@@ -192,4 +193,74 @@ def build_finance_context(user: User, db: Session) -> dict:
                 "before giving a numerical recommendation."
             ),
         },
+        # Conversational reasoning state (survives across turns until chat clear).
+        # These are the LLM's own annotations from the current conversation.
+        "conversation_reasoning_state": _serialize_reasoning_state(db, user, spent, income, apparent_remaining, safe_available),
+    }
+
+
+def _serialize_reasoning_state(
+    db: Session,
+    user: User,
+    raw_spent: int,
+    raw_income: int,
+    raw_apparent_remaining: int,
+    raw_safe_available: int,
+) -> dict:
+    """Attach the per-conversation reasoning state and the adjusted totals.
+
+    * ``raw_*`` totals come straight from the DB — the ground truth.
+    * ``adjusted_*`` totals subtract exclusions the user asked us to ignore
+      for the current conversation. Both are surfaced so the LLM can reason
+      about the diff.
+    """
+    state = get_active_state(db, user.id)
+    excluded_ids = state.excluded_transaction_ids or []
+    excluded_expense_sum = 0
+    excluded_income_sum = 0
+    if excluded_ids:
+        rows = (
+            db.query(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
+            .filter(
+                Transaction.user_id == user.id,
+                Transaction.id.in_(excluded_ids),
+            )
+            .group_by(Transaction.type)
+            .all()
+        )
+        for tx_type, total in rows:
+            if tx_type == TransactionType.expense:
+                excluded_expense_sum = int(total or 0)
+            elif tx_type == TransactionType.income:
+                excluded_income_sum = int(total or 0)
+
+    adjusted_spent = max(raw_spent - excluded_expense_sum, 0)
+    adjusted_income = max(raw_income - excluded_income_sum, 0)
+    adjusted_net_flow = adjusted_income - adjusted_spent
+    adjusted_apparent_remaining = raw_apparent_remaining + excluded_expense_sum
+    adjusted_safe_available = raw_safe_available + excluded_expense_sum
+
+    return {
+        "excluded_transaction_ids": excluded_ids,
+        "excluded_transaction_expense_sum": excluded_expense_sum,
+        "excluded_transaction_income_sum": excluded_income_sum,
+        "excluded_commitment_ids": state.excluded_commitment_ids or [],
+        "reasoning_baseline_at": state.reasoning_baseline_at,
+        "user_stated_available_balance": state.stated_balance,
+        "user_stated_available_balance_at": state.stated_balance_at,
+        "assumptions_from_user": state.assumptions,
+        "user_disclosed_debts": state.disclosed_debts,
+        # Ground-truth and conversationally-adjusted totals shown side by side.
+        "adjusted_total_spent_this_month": adjusted_spent,
+        "adjusted_total_income_this_month": adjusted_income,
+        "adjusted_net_flow_this_month": adjusted_net_flow,
+        "adjusted_apparent_remaining_budget": adjusted_apparent_remaining,
+        "adjusted_safe_available_after_commitments": adjusted_safe_available,
+        "note": (
+            "excluded_transaction_ids are transactions the user asked us to ignore "
+            "in the CURRENT conversation's calculations. They still exist in the DB. "
+            "Use adjusted_* totals for reasoning, but keep the raw totals for "
+            "reference and be transparent with the user about the difference. "
+            "user_stated_available_balance overrides the untracked actual_cash_balance."
+        ),
     }

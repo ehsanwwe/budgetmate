@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.i18n.service import t as i18n_t
+from app.services.agent_orchestrator.numeric_consistency import check_response_consistency
 from app.services.agent_orchestrator.persian_utils import to_persian_digits
 from app.models.category import Category
 from app.models.goal import Goal
@@ -123,26 +124,86 @@ class ResponseComposer:
                     metadata={"intent": plan.intent, "update_verification_failed": True},
                 )
 
+        # ── Ambiguous DELETE guard ──
+        # The executor refused a filter-based DELETE because more than one
+        # row matched and bulk_scope was not declared. Surface a clarifying
+        # message with a compact candidate list rather than let the planner
+        # hint pretend deletion happened.
+        ambiguous = [
+            r for r in results
+            if r.operation_type.value == "delete"
+            and r.rejected_reason == "ambiguous_delete_requires_clarification"
+        ]
+        if ambiguous:
+            return self._compose_delete_ambiguous(ambiguous, plan, locale)
+
+        # ── DELETE truth check ──
+        # A hint claiming "record deleted" must never be shown when the
+        # deterministic tool result says zero rows were deleted. The tool result
+        # is authoritative for mutation success — the planner's sentence is not.
+        delete_results = [
+            r for r in results
+            if r.executed and r.operation_type.value == "delete" and not r.skipped_duplicate
+        ]
+        if delete_results:
+            total_deleted = sum(r.deleted_row_count for r in delete_results)
+            all_zero = all(r.deleted_row_count == 0 for r in delete_results)
+            partial = (
+                not all_zero
+                and any(r.deleted_row_count == 0 for r in delete_results)
+            )
+            if all_zero:
+                # Never trust a planner-generated success sentence for a
+                # 0-match delete. Force the honest "no match" response.
+                return self._compose_delete(db, plan, delete_results, locale)
+            if partial:
+                # Some delete steps hit rows, others didn't. Report honestly
+                # rather than let the hint speak for the whole plan.
+                return self._compose_delete_partial(db, plan, delete_results, locale)
+            # All delete steps hit rows: still make sure the hint is not
+            # blatantly wrong (e.g. planner wrote a fixed count). If the hint
+            # is present we still prefer it, but we override numeric counts
+            # by appending the real count when the hint claims a wrong number.
+            if not safe_hint:
+                return self._compose_delete(db, plan, delete_results, locale)
+            # Fall through — safe_hint will be used with the delete count
+            # metadata attached below.
+
         # Primary response path: if the planner provided a clean hint and any operation executed,
         # use the hint (it is the planner's informed synthesis of all DB results).
         # For SELECT-only turns the hint has already been stripped of leaked op sentences above.
         any_executed = any(r.executed for r in results)
         if safe_hint and any_executed:
+            # Numerical consistency: if the hint declares an available amount
+            # and then over-allocates, replace with a conservative message
+            # rather than tell the user demonstrably wrong arithmetic.
+            consistency = check_response_consistency(safe_hint)
+            if not consistency.ok:
+                return AgentFinalResponse(
+                    message=i18n_t("composer.numeric_inconsistency", locale),
+                    operations_summary=[r.summary or "" for r in results if r.summary],
+                    metadata={
+                        "intent": plan.intent,
+                        "numeric_inconsistency": True,
+                        "declared_available": consistency.declared_available,
+                        "total_allocated": consistency.total_allocated,
+                        "reason": consistency.reason,
+                    },
+                )
             if locale == "fa":
                 safe_hint = to_persian_digits(safe_hint)
+            metadata: dict = {"intent": plan.intent}
+            if delete_results:
+                metadata["deleted_count"] = sum(r.deleted_row_count for r in delete_results)
             return AgentFinalResponse(
                 message=safe_hint,
                 operations_summary=[r.summary or "" for r in results if r.summary],
-                metadata={"intent": plan.intent},
+                metadata=metadata,
             )
 
         # Fallback DB-grounded responses (used when no good hint is available)
-        deleted = [
-            r for r in results
-            if r.executed and r.operation_type.value == "delete" and not r.skipped_duplicate
-        ]
-        if deleted:
-            response = self._compose_delete(db, plan, deleted, locale)
+        if delete_results:
+            response = self._compose_delete(db, plan, delete_results, locale)
             if response:
                 return response
 
@@ -223,6 +284,64 @@ class ResponseComposer:
                 "intent": plan.intent,
                 "deleted_count": total_deleted,
                 "tables": sorted(touched_tables),
+            },
+        )
+
+    def _compose_delete_ambiguous(
+        self,
+        results: list[AgentExecutionResult],
+        plan: AgentPlan,
+        locale: str = "fa",
+    ) -> AgentFinalResponse:
+        base_message = i18n_t("composer.delete_ambiguous", locale)
+        candidate_lines: list[str] = []
+        for r in results:
+            for c in r.ambiguous_candidates[:5]:
+                # Compose a short human line — the candidate row keys were
+                # chosen by _preview_columns_for_table so they are safe.
+                parts = []
+                if "amount" in c:
+                    parts.append(f"{int(c['amount']):,}")
+                if "type" in c:
+                    parts.append(str(c.get("type")))
+                if "description" in c and c["description"]:
+                    parts.append(str(c["description"]))
+                if "title" in c and c["title"]:
+                    parts.append(str(c["title"]))
+                if "date" in c and c["date"]:
+                    parts.append(str(c["date"]))
+                if "due_date" in c and c["due_date"]:
+                    parts.append(str(c["due_date"]))
+                candidate_lines.append("- " + " | ".join(parts))
+        if candidate_lines:
+            base_message = base_message + "\n" + "\n".join(candidate_lines)
+        return AgentFinalResponse(
+            message=base_message,
+            operations_summary=[r.summary or "" for r in results if r.summary],
+            metadata={
+                "intent": plan.intent,
+                "ambiguous_delete": True,
+                "candidate_count": sum(len(r.ambiguous_candidates) for r in results),
+            },
+        )
+
+    def _compose_delete_partial(
+        self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
+    ) -> AgentFinalResponse:
+        deleted_count = sum(r.deleted_row_count for r in results)
+        missed_count = sum(1 for r in results if r.deleted_row_count == 0)
+        return AgentFinalResponse(
+            message=i18n_t(
+                "composer.delete_partial",
+                locale,
+                {"deleted": deleted_count, "missed": missed_count},
+            ),
+            operations_summary=[r.summary or "" for r in results if r.summary],
+            metadata={
+                "intent": plan.intent,
+                "deleted_count": deleted_count,
+                "missed_count": missed_count,
+                "partial_deletion": True,
             },
         )
 

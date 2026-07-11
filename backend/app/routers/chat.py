@@ -51,7 +51,7 @@ async def send_message(
         return ChatReply(reply=INSUFFICIENT_TOKENS_MESSAGE)
 
     history = _get_history(db, current_user.id)
-    _save_message(db, current_user.id, MessageRole.user, body.content)
+    user_msg = _save_message(db, current_user.id, MessageRole.user, body.content)
     final = await orchestrator.run(
         db,
         current_user,
@@ -59,6 +59,7 @@ async def send_message(
         history=history,
         chat_mode=getattr(current_user, "chat_mode", "normal"),
         client_message_id=body.client_message_id,
+        source_message_id=user_msg.id,
     )
     reply = final.message
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
@@ -94,6 +95,9 @@ async def stream_message(
         return StreamingResponse(insufficient(), media_type="text/event-stream")
 
     history = _get_history(db, current_user.id)
+    # Save user message BEFORE the orchestrator runs so it can attach the
+    # source_message_id as chat provenance on any transaction it creates.
+    user_msg_id = _save_message(db, current_user.id, MessageRole.user, user_content).id
 
     async def event_generator():
         final = await orchestrator.run(
@@ -103,13 +107,13 @@ async def stream_message(
             history=history,
             chat_mode=getattr(current_user, "chat_mode", "normal"),
             client_message_id=client_message_id,
+            source_message_id=user_msg_id,
         )
         final_reply = final.message
         for word in final_reply.split(" "):
             yield f"data: {json.dumps({'chunk': word + ' '}, ensure_ascii=False)}\n\n"
         yield f"event: complete\ndata: {json.dumps({'text': final_reply}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
-        _save_message(db, current_user.id, MessageRole.user, user_content)
         assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, final_reply)
         usage = estimate_chat_usage(user_content, final_reply)
         consume_chat_tokens(db, current_user.id, usage, chat_message_id=assistant_msg.id)
@@ -170,13 +174,14 @@ async def voice_message(
         return {"transcript": transcript, "reply": INSUFFICIENT_TOKENS_MESSAGE, "message_id": None}
 
     history = _get_history(db, current_user.id)
-    _save_message(db, current_user.id, MessageRole.user, transcript)
+    user_msg = _save_message(db, current_user.id, MessageRole.user, transcript)
     final = await orchestrator.run(
         db,
         current_user,
         transcript,
         history=history,
         chat_mode=getattr(current_user, "chat_mode", "normal"),
+        source_message_id=user_msg.id,
     )
     reply = final.message
     assistant_msg = _save_message(db, current_user.id, MessageRole.assistant, reply)
