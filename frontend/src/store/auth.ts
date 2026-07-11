@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useChatStore } from "./chat";
 
 export interface User {
   id: number;
@@ -53,7 +54,10 @@ export const useAuthStore = create<AuthState>()(
       setNeedsProfile: (needsProfile) => set({ needsProfile }),
       setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
       setHasHydrated: (hasHydrated) => set({ hasHydrated }),
-      logout: () => set({ token: null, user: null, adminToken: null, needsProfile: false, onboardingCompleted: false }),
+      logout: () => {
+        useChatStore.getState().reset();
+        set({ token: null, user: null, adminToken: null, needsProfile: false, onboardingCompleted: false });
+      },
     }),
     {
       name: "auth-storage",

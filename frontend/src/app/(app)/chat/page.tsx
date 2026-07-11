@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useChatStore } from "@/store/chat";
+import type { Message } from "@/store/chat";
 import { useLocale } from "@/i18n/LocaleContext";
 import { t } from "@/i18n/getDictionary";
 import { getDirection } from "@/i18n/config";
@@ -12,8 +14,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp } from "lucide-react";
 import ChatEmptyState from "@/components/chat/ChatEmptyState";
-
-interface Message { id?: number; localId?: string; role: "user" | "assistant"; content: string; }
 
 const BAR_COUNT = 28;
 
@@ -77,24 +77,40 @@ export default function ChatPage() {
   const { locale, dict } = useLocale();
   const dir = getDirection(locale as Locale);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Global chat state — persists across route navigation
+  const {
+    messages,
+    streaming,
+    streamingText,
+    loading,
+    hasBudget,
+    scrollY,
+    historyUserId,
+    setMessages,
+    addMessage,
+    setStreaming,
+    setStreamingText,
+    setLoading,
+    setHasBudget,
+    setScrollY,
+    setHistoryUserId,
+  } = useChatStore();
+
+  // Local UI state — ephemeral, fine to reset on navigation
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [streaming, setStreaming] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
   const [voiceMode, setVoiceMode] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [waveformBars, setWaveformBars] = useState<number[]>(Array(BAR_COUNT).fill(0.15));
   const [sendingVoice, setSendingVoice] = useState(false);
-  const [hasBudget, setHasBudget] = useState<boolean | null>(null);
   const [clearingHistory, setClearingHistory] = useState(false);
 
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -104,13 +120,19 @@ export default function ChatPage() {
   // Synchronous guard against double-submit (React state updates are async,
   // so checking `streaming` alone is not enough for rapid double presses).
   const sendingRef = useRef(false);
+  // Tracks whether we have already done the one-time scroll restore this mount
+  const skipNextAutoScrollRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  // Load chat history only once per user session
   useEffect(() => {
+    if (user?.id === historyUserId) return;
+
     async function loadHistory() {
+      setLoading(true);
       try {
         const [histRes, budgetRes] = await Promise.allSettled([
           api.get("/chat/history"),
@@ -138,14 +160,47 @@ export default function ChatPage() {
         setHasBudget(false);
       } finally {
         setLoading(false);
+        setHistoryUserId(user?.id ?? null);
       }
     }
     loadHistory();
   }, [user]);
 
-  useEffect(() => { scrollToBottom(); }, [messages, streamingText, scrollToBottom]);
+  // One-time scroll restoration when mounting on a return visit.
+  // If streaming is active, jump to bottom so the user sees live output.
+  // Otherwise restore the saved position from before navigation.
+  useEffect(() => {
+    if (loading) return;
 
-  // Cleanup on unmount
+    if (streaming) {
+      bottomRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    } else if (scrollY > 0 && messagesContainerRef.current) {
+      skipNextAutoScrollRef.current = true;
+      messagesContainerRef.current.scrollTop = scrollY;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Auto-scroll to bottom when new content arrives.
+  // Skips once after a scroll-restore to avoid overriding it.
+  useEffect(() => {
+    if (skipNextAutoScrollRef.current) {
+      skipNextAutoScrollRef.current = false;
+      return;
+    }
+    scrollToBottom();
+  }, [messages, streamingText, scrollToBottom]);
+
+  // Save scroll position when navigating away
+  useEffect(() => {
+    return () => {
+      if (messagesContainerRef.current) {
+        setScrollY(messagesContainerRef.current.scrollTop);
+      }
+    };
+  }, [setScrollY]);
+
+  // Cleanup audio resources on unmount — streaming fetch is intentionally NOT cancelled
   useEffect(() => {
     return () => {
       stopRecording(false);
@@ -160,11 +215,10 @@ export default function ChatPage() {
     sendingRef.current = true;
 
     // Generate idempotency key — same key reused on stream + fallback POST.
-    // Backend uses this to prevent duplicate DB writes on retry.
     const clientMsgId = crypto.randomUUID();
 
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMsg, localId: clientMsgId }]);
+    addMessage({ role: "user", content: userMsg, localId: clientMsgId });
     setStreaming(true);
     setStreamingText("");
 
@@ -218,20 +272,19 @@ export default function ChatPage() {
         }
       }
 
-      if (accumulated) setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
+      if (accumulated) addMessage({ role: "assistant", content: accumulated });
     } catch {
       if (!backendResponded) {
         try {
-          // Reuse the same clientMsgId so backend idempotency prevents a double write
           const res = await api.post("/chat/message", { content: userMsg, client_message_id: clientMsgId });
-          setMessages((prev) => [...prev, { role: "assistant", content: res.data.reply || t(dict, "chat.fallback") }]);
+          addMessage({ role: "assistant", content: res.data.reply || t(dict, "chat.fallback") });
         } catch {
           toast.error(t(dict, "chat.errorSend"));
-          setMessages((prev) => [...prev, { role: "assistant", content: t(dict, "chat.retryMessage") }]);
+          addMessage({ role: "assistant", content: t(dict, "chat.retryMessage") });
         }
       } else {
         if (accumulated) {
-          setMessages((prev) => [...prev, { role: "assistant", content: accumulated }]);
+          addMessage({ role: "assistant", content: accumulated });
         } else {
           toast.error(t(dict, "chat.connectionDropped"));
         }
@@ -337,8 +390,8 @@ export default function ChatPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const { transcript, reply } = res.data;
-      if (transcript) setMessages((prev) => [...prev, { role: "user", content: `🎤 ${transcript}` }]);
-      if (reply) setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      if (transcript) addMessage({ role: "user", content: `🎤 ${transcript}` });
+      if (reply) addMessage({ role: "assistant", content: reply });
       cancelVoice();
     } catch {
       toast.error(t(dict, "chat.voiceError"));
@@ -430,7 +483,10 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40">
+        <div
+            ref={messagesContainerRef}
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40"
+        >
           {messages.map((msg, i) => (
               <MessageBubble key={msg.localId || msg.id || i} message={msg} />
           ))}
