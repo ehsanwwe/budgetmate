@@ -21,7 +21,7 @@ Return only strict JSON matching this schema:
   "steps": [
     {
       "step_id": "s1",
-      "operation_type": "select|insert|update|final_response|ask_clarification|no_op",
+      "operation_type": "select|insert|update|delete|final_response|ask_clarification|no_op",
       "purpose": "why this is needed",
       "table_name": "one DB World table name or null",
       "sql": "parameterized SQL or null",
@@ -146,22 +146,85 @@ Do not approve high-value discretionary purchases without checking budget, goals
 Never invent totals, category names, category ids, or transaction ids. Use final_response only after validated execution results are available.
 
 FINANCIAL AVAILABILITY RULE — CRITICAL:
-The finance context includes a "financial_availability" block with:
-  - apparent_remaining_budget: budget minus what was already spent this month
-  - commitments_due_this_month_total: total of pending future_commitments due this month
-  - safe_available_after_commitments: apparent_remaining minus this month's commitments
-  - commitments_due_soon: list of commitments due in the next 7 days
-  - liquidity_risk_level: high/medium/low
+The finance context "financial_availability" block has TWO distinct sides that must NEVER be conflated:
 
-NEVER tell the user how much money is "free", "available", or "باقی‌مانده" using only apparent_remaining_budget.
-ALWAYS subtract commitments_due_this_month_total before answering availability questions.
-When reporting available money:
-  1. State the apparent remainder
-  2. List significant upcoming commitments this month (due_soon is most urgent)
-  3. State the safe_available_after_commitments as the true free amount
-  4. If liquidity_risk_level=high, warn the user explicitly
-Example phrasing: «در ظاهر X تومان مانده، اما چون تعهد Y تومانی دارید که ماه جاری سررسید می‌شه، پول واقعاً آزاد حدود Z تومانه.»
-If there are no pending commitments this month, apparent and safe values are equal — state both cleanly."""
+BUDGET SIDE (planning figures, NOT real money):
+  - apparent_remaining_budget = budget_amount - recorded_total_spent_this_month
+  - recorded_total_income_this_month, recorded_total_spent_this_month, recorded_net_flow_this_month
+  - commitments_due_this_month_total, safe_available_after_commitments, commitments_due_soon
+  - liquidity_risk_level
+
+ACTUAL LIQUIDITY SIDE (real cash the user can spend):
+  - actual_cash_balance_tracked: false (the app does NOT store real bank/cash balances)
+  - actual_cash_balance_amount: null unless the user has just told you in this conversation
+
+Rules for how to speak about money:
+  - Budget "remaining" is NOT the user's account balance. Never call it "پول آزاد", "پولی که داری", "موجودی", or "cash you have".
+  - Recorded net flow (income - expense inside the app) is NOT the account balance either.
+  - Only the user's actual bank + cash total is the real available balance.
+
+BALANCE-BEFORE-ALLOCATION RULE:
+Before you give a personalized numerical recommendation about ANY of:
+  - how to split received income,
+  - how much to save vs spend,
+  - whether to pay a debt now,
+  - how much is safe to spend on a gift / event / discretionary purchase,
+  - how to survive until the next salary,
+  - how much money is truly free,
+you MUST know the user's actual available cash+bank balance.
+  1. First look through the recent conversation history for a balance the user already stated. If found, use it and do NOT ask again.
+  2. Otherwise plan an ask_clarification step whose question is a single concise natural request for the current total available cash/bank balance across accounts and cash. Persian example: «قبل از اینکه پیشنهاد بدم، الان روی هم چقدر پول قابل‌استفاده توی حساب‌ها و نقد داری؟» — do not use these exact words; adapt them to the flow.
+  3. General educational questions (e.g. "چند درصد از درآمد معمولاً منطقی است پس‌انداز کنم؟") do NOT require the balance question. Answer generally and label it as non-personalized.
+
+UNCERTAIN INCOME RULE:
+If the user says an income "maybe" or "احتمالاً" arrives, treat it as UNCERTAIN. Do not add it to actual balance and do not treat it as spendable cash.
+  - If the user asks for a plan around uncertain income, produce a CONDITIONAL / scenario answer: "اگر X میلیون واریز شد ... اگر فقط Y میلیون شد ...".
+  - Do not silently convert uncertain future income into confirmed cash.
+  - Never INSERT a transaction for money that has not yet arrived. Uncertain income is not a transactions row.
+
+USER-DISCLOSED DEBT RULE:
+Debt the user just described in conversation is REAL context for reasoning, even if it is not stored in `future_commitments`.
+  - Do not answer "no debts on file" and stop there. Combine stored commitments AND user-disclosed amounts.
+  - You may optionally propose a future_commitments INSERT to record disclosed debt when it is clearly a binding obligation (assuming the source_scope is current_message).
+
+USER-PROVIDED ASSUMPTION RULE:
+If the user gives a simplifying assumption ("Forget the exact due dates, assume everything is due by the eighth"), USE that assumption immediately. Do not keep asking for the detail the user just told you to abstract away.
+
+DO-NOT-REPEAT RULE:
+When history already contains an answer to a question the assistant asked, use that answer. Do NOT ask again.
+  - Short user replies ("جداست", "بله", "همینه", "هردو") refer to the immediately preceding assistant question. Resolve them from the RECENT EXCHANGE block and update the internal financial state accordingly, then either continue or answer.
+
+INVALIDATION RULE:
+If the user says things like "اینارو ولش کن" / "قبلی‌ها را حساب نکن" / "اطلاعات قبلی اشتباه بود" / "از اول شروع کنیم" / "start over" / "forget those" — the amounts they reference must be treated as INVALIDATED for the rest of this reasoning turn.
+  - Do not include invalidated amounts in future totals or advice within the same reply.
+  - If they ALSO want the records removed persistently, plan DELETE steps (see DELETE tool description in the DB World instructions).
+  - If persistent deletion is not requested, simply do not reuse the invalidated numbers.
+
+DELETION-VIA-CHAT RULE:
+Understand deletion requests naturally. Do not require literal "delete" words. Examples of deletion intent (understand semantically):
+  - "تراکنش آخرم را حذف کن" → SELECT most recent transaction, then DELETE by that id.
+  - "خرید امروز را پاک کن" → SELECT transactions where date = today, disambiguate if multiple, DELETE the match.
+  - "درآمد کلاس خصوصی را پاک کن" → SELECT transactions filtered by type=income and description, DELETE the match.
+  - "هر تراکنشی که تا الان گفتم پاک کن" → SELECT recent conversation-window transactions, DELETE that id list.
+  - "همه خرج و درآمدهای امروز را پاک کن" → SELECT id list where date=today, DELETE that id list.
+  - "اون یکی اشتباه بود، برش دار" → resolve "اون" from recent conversation history (which transaction was just discussed), then DELETE it.
+Never DELETE without first SELECTing the id(s). Never claim a deletion succeeded unless the execution_results confirm it. If the SELECT returns zero rows, respond honestly that nothing matched.
+
+NUMERICAL CONSISTENCY RULE:
+Before returning final_response_hint that contains a numerical plan:
+  - Ensure the allocation components sum to the amount being allocated (± small rounding).
+  - Do not double-count expenses that already exist in recorded_total_spent_this_month.
+  - Do not exceed a stated available balance in the same answer.
+  - Do not mix toman and rial. Persian "5 تومن" in a conversational finance context typically means 5 million toman only when there is unambiguous prior context (e.g. discussing millions). Otherwise ask.
+  - Debts must be subtracted, not added.
+
+TONE / MODE RULE:
+The chat_mode may be sarcastic ("roast") or hype. It affects PHRASING only. It must never:
+  - Change the numbers.
+  - Encourage risky choices.
+  - Shame, insult, or dismiss the user's stress.
+  - Replace the actual answer with a joke.
+Deliver the accurate financial answer first; the tone flavors the wording, not the substance."""
 
 
 class AgentPlanner:
@@ -221,13 +284,14 @@ class AgentPlanner:
                         "SEMANTIC INTERPRETATION OF CURRENT MESSAGE (authoritative — use this, do not re-derive):\n"
                         + json.dumps(semantic_interpretation, ensure_ascii=False, default=str)
                         + "\n\nPlanner rules when using semantic_interpretation:\n"
-                        "- If action.can_write=false, do NOT create INSERT or UPDATE steps.\n"
-                        "- If user_intent is a question (is_question=true or intent in {goal_question,budget_question,advice_question}), plan SELECT steps only.\n"
+                        "- If action.can_write=false, do NOT create INSERT, UPDATE, or DELETE steps. Purely informational SELECT is still allowed.\n"
+                        "- If user_intent is a question (is_question=true or intent in {goal_question,budget_question,advice_question}), plan SELECT steps only — never write.\n"
                         "- If date.resolved_date is set and confidence>=0.75, use that ISO date in params — do not re-parse with regex.\n"
                         "- If money.amount is set and confidence>=0.75, use that integer amount in params.\n"
                         "- If user_intent=cancel_flow or invalid_both_choice, plan no_op or final_response only.\n"
                         "- If action.requires_more_info=true, plan ask_clarification step.\n"
-                        "- If user_intent=goal_question and referenced_entities.goal_title is set, SELECT that goal first."
+                        "- If user_intent=goal_question and referenced_entities.goal_title is set, SELECT that goal first.\n"
+                        "- Semantic user_intent does NOT enumerate every possible action. Deletion, invalidation, balance queries, allocation questions, uncertain-income scenarios, and other requests you understand from the current message may not appear as explicit user_intent values. Read the CURRENT USER MESSAGE plus RECENT EXCHANGE yourself and pick the right plan — semantic is a hint, not the only source of truth."
                     ),
                 }
             )

@@ -91,6 +91,8 @@
     "goal_deadline_txt": "، مهلت {date}",
     "goal_deadline_update": " با مهلت {date}",
     "commitment_due_date": "، موعد {date}",
-    "commitment_due_month": "، {month}"
+    "commitment_due_month": "، {month}",
+    "delete_success": "{count} مورد حذف شد.",
+    "delete_no_match": "موردی برای حذف پیدا نکردم."
   }
 }

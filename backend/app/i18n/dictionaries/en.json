@@ -91,6 +91,8 @@
     "goal_deadline_txt": ", deadline {date}",
     "goal_deadline_update": " with deadline {date}",
     "commitment_due_date": ", due {date}",
-    "commitment_due_month": ", {month}"
+    "commitment_due_month": ", {month}",
+    "delete_success": "{count} record(s) deleted.",
+    "delete_no_match": "I couldn't find a matching record to delete."
   }
 }

@@ -163,8 +163,11 @@ def build_finance_context(user: User, db: Session) -> dict:
             for item in commitments
         ],
         "financial_availability": {
+            # BUDGET SIDE — these are budget/planning figures, NOT bank/cash balance
             "apparent_remaining_budget": apparent_remaining,
-            "total_spent_this_month": spent,
+            "recorded_total_spent_this_month": spent,
+            "recorded_total_income_this_month": income,
+            "recorded_net_flow_this_month": income - spent,
             "budget_amount": budget_amount,
             "upcoming_required_commitments_total": upcoming_required_total,
             "commitments_due_soon_total": due_soon_total,
@@ -175,5 +178,18 @@ def build_finance_context(user: User, db: Session) -> dict:
                 for c in commitments_due_soon[:5]
             ],
             "liquidity_risk_level": liquidity_risk,
+            # ACTUAL LIQUIDITY SIDE — the app does not track bank/cash accounts.
+            # These fields MUST NOT be conflated with the budget side above.
+            "actual_cash_balance_tracked": False,
+            "actual_cash_balance_amount": None,
+            "actual_cash_balance_last_known_at": None,
+            "actual_cash_balance_note": (
+                "The app does not currently store real bank/cash balances. "
+                "'apparent_remaining_budget' and 'safe_available_after_commitments' "
+                "are BUDGET figures, not the user's real available money. "
+                "For any personalized allocation advice (how to split income, whether to save vs spend, "
+                "how much is free), ASK the user for their current total available cash/bank balance "
+                "before giving a numerical recommendation."
+            ),
         },
     }

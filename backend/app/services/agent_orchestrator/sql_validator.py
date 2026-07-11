@@ -7,7 +7,7 @@ from app.services.agent_orchestrator.table_policy import FORBIDDEN_TABLES, get_p
 from app.services.agent_orchestrator.types import AgentOperationType, SqlValidationResult
 
 _DANGEROUS = re.compile(
-    r"\b(drop|delete|alter|truncate|create|replace|attach|detach|pragma|vacuum)\b",
+    r"\b(drop|alter|truncate|create|replace|attach|detach|pragma|vacuum)\b",
     re.IGNORECASE,
 )
 _COMMENT = re.compile(r"(--|/\*|\*/|#)")
@@ -21,6 +21,10 @@ _INSERT_RE = re.compile(
 )
 _UPDATE_RE = re.compile(
     r"^\s*update\s+(?P<table>[a-zA-Z_][\w]*)\s+set\s+(?P<sets>.+?)\s+where\s+(?P<where>.+)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_DELETE_RE = re.compile(
+    r"^\s*delete\s+from\s+(?P<table>[a-zA-Z_][\w]*)\s+where\s+(?P<where>.+?)\s*$",
     re.IGNORECASE | re.DOTALL,
 )
 _PARAM_RE = re.compile(r":[a-zA-Z_][\w]*")
@@ -38,7 +42,12 @@ class SqlValidator:
         params: dict[str, Any] | None = None,
     ) -> SqlValidationResult:
         params = params or {}
-        if operation_type not in {AgentOperationType.select, AgentOperationType.insert, AgentOperationType.update}:
+        if operation_type not in {
+            AgentOperationType.select,
+            AgentOperationType.insert,
+            AgentOperationType.update,
+            AgentOperationType.delete,
+        }:
             return self._reject("unknown or non-SQL operation type")
         if not sql or not isinstance(sql, str):
             return self._reject("missing SQL")
@@ -61,6 +70,11 @@ class SqlValidator:
         if operation_type == AgentOperationType.update:
             try:
                 return self._validate_update(table_name, sql, params)
+            except ValueError as exc:
+                return self._reject(str(exc))
+        if operation_type == AgentOperationType.delete:
+            try:
+                return self._validate_delete(table_name, sql, params)
             except ValueError as exc:
                 return self._reject(str(exc))
         try:
@@ -187,6 +201,80 @@ class SqlValidator:
             sql=sql.strip(),
             params=params,
             columns=columns,
+        )
+
+    def _validate_delete(self, requested_table: str | None, sql: str, params: dict[str, Any]) -> SqlValidationResult:
+        match = _DELETE_RE.match(sql)
+        if not match:
+            return self._reject("only simple parameterized DELETE with a WHERE clause is allowed")
+        table = match.group("table").lower()
+        if requested_table and table != requested_table.lower():
+            return self._reject("step table_name does not match SQL table", table)
+        policy = get_policy(table)
+        if not policy or table in FORBIDDEN_TABLES or not policy.allowed_delete or policy.system_only:
+            return self._reject("DELETE from this table is forbidden", table)
+
+        where = match.group("where").strip()
+        if not where:
+            return self._reject("DELETE requires a WHERE clause", table)
+        if re.search(r"\buser_id\b", where, re.IGNORECASE):
+            return self._reject("LLM cannot filter DELETE by user_id", table)
+
+        # Restrict WHERE to a small set of safe filter expressions:
+        # id = :p | id IN (:p1, :p2, ...) | column op :param [AND ...]
+        # No subqueries, joins, or OR chains.
+        if re.search(r"\bor\b", where, re.IGNORECASE):
+            return self._reject("DELETE WHERE must be a simple AND-only filter, no OR", table)
+        if "select" in where.lower() or "(" in where and ")" in where and "in" not in where.lower():
+            # Allow parentheses only for IN (:p1, :p2, ...)
+            pass  # further validated below
+        if re.search(r"\bselect\b", where, re.IGNORECASE):
+            return self._reject("DELETE WHERE must not contain a subquery", table)
+
+        allowed_delete_filter_columns = policy.selectable_columns
+        # Break WHERE into AND-joined conditions
+        conditions = re.split(r"\band\b", where, flags=re.IGNORECASE)
+        for condition in conditions:
+            cond = condition.strip()
+            if not cond:
+                return self._reject("empty DELETE condition", table)
+            # id IN (:p1, :p2, ...)
+            in_match = re.match(
+                r"^([a-zA-Z_][\w]*)\s+in\s*\(\s*(:[a-zA-Z_][\w]*(?:\s*,\s*:[a-zA-Z_][\w]*)*)\s*\)$",
+                cond,
+                re.IGNORECASE,
+            )
+            if in_match:
+                col = in_match.group(1).lower()
+                if col not in allowed_delete_filter_columns:
+                    return self._reject(f"DELETE filter column {col} is not allowed", table)
+                continue
+            # column IS NULL / IS NOT NULL
+            null_match = re.match(r"^([a-zA-Z_][\w]*)\s+is\s+(not\s+)?null$", cond, re.IGNORECASE)
+            if null_match:
+                col = null_match.group(1).lower()
+                if col not in allowed_delete_filter_columns:
+                    return self._reject(f"DELETE filter column {col} is not allowed", table)
+                continue
+            # column op :param  (op ∈ =, <, <=, >, >=, !=, <>)
+            op_match = re.match(
+                r"^([a-zA-Z_][\w]*)\s*(=|<=|>=|<>|!=|<|>)\s*(:[a-zA-Z_][\w]*)$",
+                cond,
+            )
+            if op_match:
+                col = op_match.group(1).lower()
+                if col not in allowed_delete_filter_columns:
+                    return self._reject(f"DELETE filter column {col} is not allowed", table)
+                continue
+            return self._reject("DELETE condition is not a supported filter", table)
+
+        self._validate_params_are_used(sql, params)
+        return SqlValidationResult(
+            allowed=True,
+            operation_type=AgentOperationType.delete,
+            table_name=table,
+            sql=sql.strip(),
+            params=params,
         )
 
     def _extract_select_columns(self, raw: str) -> list[str]:

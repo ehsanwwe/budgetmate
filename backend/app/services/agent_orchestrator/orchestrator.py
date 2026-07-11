@@ -26,7 +26,7 @@ from app.services.agent_orchestrator.types import (
 
 logger = logging.getLogger(__name__)
 
-_WRITE_OPS = {AgentOperationType.insert, AgentOperationType.update}
+_WRITE_OPS = {AgentOperationType.insert, AgentOperationType.update, AgentOperationType.delete}
 
 
 class _NullGate:
@@ -151,7 +151,12 @@ class AgentOrchestrator:
             actionable = [
                 s
                 for s in plan.steps
-                if s.operation_type in {AgentOperationType.select, AgentOperationType.insert, AgentOperationType.update}
+                if s.operation_type in {
+                    AgentOperationType.select,
+                    AgentOperationType.insert,
+                    AgentOperationType.update,
+                    AgentOperationType.delete,
+                }
             ]
             if not actionable:
                 if last_action_plan and all_results:
@@ -242,15 +247,23 @@ class AgentOrchestrator:
 
     def _is_clearly_malicious(self, result: AgentExecutionResult) -> bool:
         reason = (result.rejected_reason or result.error or "").lower()
+        # DELETE that failed WHERE-clause validation is a repairable safety
+        # rejection, not malicious; keep only truly destructive markers here.
         return any(
             marker in reason
             for marker in (
                 "destructive",
                 "administrative",
-                "forbidden",
                 "multiple statements",
                 "comments",
                 "cannot set user_id",
+                "drop ",
+                "alter ",
+                "truncate",
+                "pragma",
+                "attach",
+                "detach",
+                "vacuum",
             )
         )
 

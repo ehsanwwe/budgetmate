@@ -14,6 +14,7 @@ class AgentOperationType(str, Enum):
     select = "select"
     insert = "insert"
     update = "update"
+    delete = "delete"
     final_response = "final_response"
     ask_clarification = "ask_clarification"
     no_op = "no_op"
@@ -61,6 +62,8 @@ class AgentExecutionResult(StrictModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
     inserted_id: Optional[int] = None
     updated_id: Optional[int] = None
+    deleted_ids: list[int] = Field(default_factory=list)
+    deleted_row_count: int = 0
     summary: Optional[str] = None
     rejected_reason: Optional[str] = None
     error: Optional[str] = None

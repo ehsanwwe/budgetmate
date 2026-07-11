@@ -44,6 +44,8 @@ def build_safe_schema(engine: Engine) -> list[SchemaTableInfo]:
             operations.append(AgentOperationType.insert)
         if policy.allowed_update:
             operations.append(AgentOperationType.update)
+        if policy.allowed_delete:
+            operations.append(AgentOperationType.delete)
 
         result.append(
             SchemaTableInfo(

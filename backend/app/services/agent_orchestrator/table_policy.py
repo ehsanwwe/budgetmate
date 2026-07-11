@@ -19,6 +19,7 @@ POLICIES: dict[str, TablePolicy] = {
         business_name="current user's income and expense transactions",
         allowed_select=True,
         allowed_insert=True,
+        allowed_delete=True,
         user_scoped=True,
         user_id_column="user_id",
         selectable_columns={"id", "category_id", "amount", "type", "description", "date", "created_at"},
@@ -57,6 +58,7 @@ POLICIES: dict[str, TablePolicy] = {
         allowed_select=True,
         allowed_insert=True,
         allowed_update=True,
+        allowed_delete=True,
         user_scoped=True,
         user_id_column="user_id",
         selectable_columns={
@@ -286,5 +288,6 @@ def llm_visible_policies() -> list[TablePolicy]:
     return [
         policy
         for policy in POLICIES.values()
-        if not policy.system_only and (policy.allowed_select or policy.allowed_insert)
+        if not policy.system_only
+        and (policy.allowed_select or policy.allowed_insert or policy.allowed_delete)
     ]

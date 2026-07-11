@@ -288,6 +288,24 @@ class SqlExecutor:
                     summary=f"{len(rows)} rows selected",
                 )
 
+            if validation.operation_type == AgentOperationType.delete:
+                deleted_ids = self._execute_delete(db, user, validation)
+                summary = {"deleted_ids": deleted_ids, "deleted_count": len(deleted_ids)}
+                audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
+                return AgentExecutionResult(
+                    step_id=step.step_id,
+                    operation_type=AgentOperationType.delete,
+                    allowed=True,
+                    executed=True,
+                    deleted_ids=deleted_ids,
+                    deleted_row_count=len(deleted_ids),
+                    summary=(
+                        f"deleted {len(deleted_ids)} row(s)"
+                        if deleted_ids
+                        else "no matching row to delete"
+                    ),
+                )
+
             if validation.operation_type == AgentOperationType.update:
                 updated_id = self._execute_update(db, user, validation)
                 summary = {"updated_id": updated_id}
@@ -509,6 +527,56 @@ class SqlExecutor:
                 return int(candidate.id)
 
         return None
+
+    def _execute_delete(self, db: Session, user: User, validation: SqlValidationResult) -> list[int]:
+        """Execute a policy-approved DELETE, scoped to the authenticated user.
+
+        Strategy:
+          1. Read the matching row ids using the same WHERE, adding user-scope.
+          2. Perform the DELETE by id list so ownership is authoritative and
+             we return the exact list of removed ids.
+          3. Empty match returns [] (never raises) so the LLM can report
+             "no matching record found" honestly.
+        """
+        table = validation.table_name or ""
+        policy = get_policy(table)
+        if not policy:
+            raise ValueError("delete target has no policy")
+        base_where = self._extract_where(validation.sql or "")
+        if not base_where:
+            raise ValueError("DELETE missing WHERE")
+
+        scoped_where = base_where
+        params = dict(validation.params)
+        if policy.user_scoped and policy.user_id_column:
+            scoped_where = f"({base_where}) AND {policy.user_id_column} = :__current_user_id"
+            params["__current_user_id"] = user.id
+
+        # Discover the ids so we can report them
+        select_sql = f"SELECT id FROM {table} WHERE {scoped_where}"
+        rows = db.execute(text(select_sql), params).mappings().all()
+        matched_ids = [int(row["id"]) for row in rows if row.get("id") is not None]
+        if not matched_ids:
+            return []
+
+        # Use the id list to perform a definitive scoped delete
+        id_params = {f"__del_id_{i}": mid for i, mid in enumerate(matched_ids)}
+        placeholders = ", ".join(f":{k}" for k in id_params.keys())
+        delete_sql = f"DELETE FROM {table} WHERE id IN ({placeholders})"
+        if policy.user_scoped and policy.user_id_column:
+            delete_sql += f" AND {policy.user_id_column} = :__current_user_id"
+        del_params: dict[str, Any] = {**id_params}
+        if policy.user_scoped and policy.user_id_column:
+            del_params["__current_user_id"] = user.id
+        db.execute(text(delete_sql), del_params)
+        db.commit()
+        return matched_ids
+
+    def _extract_where(self, sql: str) -> str:
+        match = re.search(r"\bwhere\b(.+)$", sql.strip(), re.IGNORECASE | re.DOTALL)
+        if not match:
+            return ""
+        return match.group(1).strip().rstrip(";").strip()
 
     def _execute_select(self, db: Session, user: User, validation: SqlValidationResult) -> list[dict[str, Any]]:
         sql = validation.sql or ""

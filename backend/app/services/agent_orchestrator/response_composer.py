@@ -13,13 +13,24 @@ from app.models.transaction import Transaction, TransactionType
 from app.services.agent_orchestrator.types import AgentExecutionResult, AgentFinalResponse, AgentPlan, AgentPlanStep
 
 _PLACEHOLDER_RE = re.compile(r"\[[a-zA-Z_][a-zA-Z0-9_\-\s.]*\]")
-_SQL_RE = re.compile(r"\b(select|insert|update|delete|drop|alter|pragma)\b", re.IGNORECASE)
+_SQL_RE = re.compile(
+    r"\b("
+    r"select\s+[\w*.,\s]+\s+from"
+    r"|insert\s+into"
+    r"|update\s+\w+\s+set"
+    r"|delete\s+from"
+    r"|drop\s+table"
+    r"|alter\s+table"
+    r"|pragma\s+"
+    r")\b",
+    re.IGNORECASE,
+)
 
 # Detects operation-confirmation sentences appended at the end of hints —
 # these can bleed in when the LLM sees prior-turn results in history and
 # copies them into the current final_response_hint.
 _LEAKED_OP_RE = re.compile(
-    r"[.،\s]+[^.،]{0,80}(?:منتقل شد|آپدیت شد|به‌روزرسانی شد|تغییر کرد|ثبت شد|ذخیره شد|اضافه شد)[^.،]{0,60}$",
+    r"[.،\s]+[^.،]{0,80}(?:منتقل شد|آپدیت شد|به‌روزرسانی شد|تغییر کرد|ثبت شد|ذخیره شد|اضافه شد|حذف شد|پاک شد)[^.،]{0,60}$",
     re.UNICODE,
 )
 
@@ -76,7 +87,7 @@ class ResponseComposer:
 
         # Determine if this turn performed real writes (not just SELECTs or skipped dupes)
         current_turn_wrote = any(
-            r.executed and r.operation_type.value in {"insert", "update"} and not r.skipped_duplicate
+            r.executed and r.operation_type.value in {"insert", "update", "delete"} and not r.skipped_duplicate
             for r in results
         )
 
@@ -126,6 +137,15 @@ class ResponseComposer:
             )
 
         # Fallback DB-grounded responses (used when no good hint is available)
+        deleted = [
+            r for r in results
+            if r.executed and r.operation_type.value == "delete" and not r.skipped_duplicate
+        ]
+        if deleted:
+            response = self._compose_delete(db, plan, deleted, locale)
+            if response:
+                return response
+
         inserted = [r for r in results if r.inserted_id and not r.skipped_duplicate]
         if inserted:
             response = self._compose_insert(db, plan, inserted, locale)
@@ -177,6 +197,35 @@ class ResponseComposer:
                     return False
         return True
 
+    def _compose_delete(
+        self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
+    ) -> AgentFinalResponse | None:
+        """Fallback message when the planner did not provide a hint for a delete turn."""
+        total_deleted = sum(r.deleted_row_count for r in results)
+        step_by_id = {step.step_id: step for step in plan.steps}
+        touched_tables = {
+            (step_by_id[r.step_id].table_name or "")
+            for r in results
+            if r.step_id in step_by_id
+        }
+        # Composer strings are shared across delete operations; we pick a simple
+        # short template driven by the number of removed rows.
+        if total_deleted == 0:
+            return AgentFinalResponse(
+                message=i18n_t("composer.delete_no_match", locale),
+                operations_summary=[r.summary or "" for r in results if r.summary],
+                metadata={"intent": plan.intent, "deleted_count": 0, "tables": sorted(touched_tables)},
+            )
+        return AgentFinalResponse(
+            message=i18n_t("composer.delete_success", locale, {"count": total_deleted}),
+            operations_summary=[r.summary or "" for r in results if r.summary],
+            metadata={
+                "intent": plan.intent,
+                "deleted_count": total_deleted,
+                "tables": sorted(touched_tables),
+            },
+        )
+
     def _compose_update_fallback(
         self, db: Session, plan: AgentPlan, results: list[AgentExecutionResult], locale: str = "fa"
     ) -> AgentFinalResponse | None:
@@ -204,7 +253,7 @@ class ResponseComposer:
 
     def _compose_rejected(self, plan: AgentPlan, rejected: list[AgentExecutionResult], locale: str = "fa") -> str:
         reasons = " ".join(str(r.rejected_reason or r.error or "").lower() for r in rejected)
-        if any(marker in reasons for marker in ("destructive", "administrative", "forbidden", "multiple statements", "comments", "drop", "delete", "alter")):
+        if any(marker in reasons for marker in ("destructive", "administrative", "multiple statements", "comments", "drop ", "alter ")):
             return i18n_t("composer.rejected_destructive", locale)
         if "history_context" in reasons:
             return i18n_t("composer.rejected_history", locale)

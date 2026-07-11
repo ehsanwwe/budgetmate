@@ -9,9 +9,17 @@ from app.services.agent_orchestrator.types import DbWorld
 
 
 WORLD_INSTRUCTIONS = [
-    "You can only plan SELECT, INSERT, and explicitly allowed UPDATE operations listed in this DB World.",
-    "Never plan DELETE, DROP, ALTER, CREATE, PRAGMA, ATTACH, DETACH, VACUUM, comments, or multiple SQL statements.",
+    "You can only plan SELECT, INSERT, UPDATE, and DELETE operations against tables whose allowed_operations include that op in this DB World.",
+    "Never plan DROP, ALTER, CREATE, PRAGMA, ATTACH, DETACH, VACUUM, comments, or multiple SQL statements.",
     "All user-owned tables are scoped by the backend. Do not SELECT, filter by, include, or set user_id; SQL or params containing user_id will be rejected and must be repaired by removing user_id.",
+    # DELETE tool description
+    "DELETE tool — use when the user asks to remove/discard/erase a stored record (a transaction, a future_commitment, etc.). Understand deletion requests naturally from the message; do not require literal 'delete' wording. Persian phrases like 'حذف کن', 'پاک کن', 'ولش کن', 'اینو بردار', 'اشتباه ثبت شد', 'برش دار' can all express deletion of a specific stored record when they refer to an item the user is discussing.",
+    "DELETE syntax: DELETE FROM <table> WHERE <filter>. Filter must use only whitelisted selectable columns joined by AND, with named parameters — for example: DELETE FROM transactions WHERE id = :id | DELETE FROM transactions WHERE id IN (:i1, :i2) | DELETE FROM transactions WHERE type = :t AND date = :d. Do NOT include user_id, subqueries, or OR. The backend adds user-scoping automatically.",
+    "Before deleting by fuzzy criteria (last transaction, restaurant expense today, all conversation-created records) FIRST issue a SELECT to obtain real ids from the DB. Then issue DELETE using those ids. Never fabricate ids.",
+    "If a delete match is ambiguous (multiple candidates), ask ONE concise clarification question naming the candidates and their amounts/dates instead of guessing.",
+    "If a delete SELECT returns zero rows, do NOT insert a DELETE step. Answer honestly that no matching record was found.",
+    "For 'delete everything I told you about in this conversation' style requests: SELECT recent transactions (and future_commitments if relevant) whose created_at falls within the current conversation window, then DELETE by their id list. Confirm the actual count in the final response using the executor result — do not claim success unless the executor reports rows deleted.",
+    "After a deletion succeeds you MUST treat those records as gone for the rest of this turn's reasoning. Do not include their amounts in subsequent totals, budgets, or advice within the same conversation until the user restores them.",
     "Use only named parameters such as :amount and put values in params.",
     "For categories, SELECT real rows first. Choose category_id only from returned rows; do not guess hidden ids.",
     "For transactions, INSERT only category_id, amount, type, description, date. The backend injects the authenticated user id.",
