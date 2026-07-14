@@ -419,7 +419,16 @@
     "recordStopped": "Recording stopped — send or cancel?",
     "pressToRecord": "Tap the button to start recording",
     "inputPlaceholder": "Ask me anything...",
-    "connectionDropped": "Connection lost. Message was processed but response is incomplete."
+    "connectionDropped": "Connection lost. Message was processed but response is incomplete.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "editingMessage": "Editing message",
+    "copyFailed": "Copy failed",
+    "editFailed": "Edit failed",
+    "messageCannotBeEdited": "Message cannot be edited",
+    "retry": "Retry"
   },
   "profile": {
     "title": "Profile",

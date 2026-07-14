@@ -419,7 +419,16 @@
     "recordStopped": "录音停止 — 发送或取消？",
     "pressToRecord": "点击按钮开始录音",
     "inputPlaceholder": "问我任何问题...",
-    "connectionDropped": "连接中断。消息已处理但回复不完整。"
+    "connectionDropped": "连接中断。消息已处理但回复不完整。",
+    "copy": "复制",
+    "copied": "已复制",
+    "edit": "编辑",
+    "cancel": "取消",
+    "editingMessage": "正在编辑消息",
+    "copyFailed": "复制失败",
+    "editFailed": "编辑失败",
+    "messageCannotBeEdited": "无法编辑此消息",
+    "retry": "重试"
   },
   "profile": {
     "title": "个人资料",

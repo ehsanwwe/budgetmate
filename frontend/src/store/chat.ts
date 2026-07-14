@@ -18,6 +18,8 @@ interface ChatState {
 
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  updateMessageId: (localId: string, id: number) => void;
+  editMessageAndTruncate: (id: number, content: string) => void;
   setStreaming: (streaming: boolean) => void;
   setStreamingText: (text: string) => void;
   setLoading: (loading: boolean) => void;
@@ -42,6 +44,21 @@ export const useChatStore = create<ChatState>()((set) => ({
 
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
+  updateMessageId: (localId, id) => set((s) => ({
+    messages: s.messages.map((message) =>
+      message.localId === localId ? { ...message, id } : message
+    ),
+  })),
+  editMessageAndTruncate: (id, content) => set((s) => {
+    const index = s.messages.findIndex((message) => message.id === id);
+    if (index < 0) return s;
+    return {
+      messages: [
+        ...s.messages.slice(0, index),
+        { ...s.messages[index], content },
+      ],
+    };
+  }),
   setStreaming: (streaming) => set({ streaming }),
   setStreamingText: (streamingText) => set({ streamingText }),
   setLoading: (loading) => set({ loading }),

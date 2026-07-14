@@ -419,7 +419,16 @@
     "recordStopped": "توقف التسجيل — إرسال أم إلغاء؟",
     "pressToRecord": "اضغط الزر لبدء التسجيل",
     "inputPlaceholder": "اسألني أي شيء...",
-    "connectionDropped": "انقطع الاتصال. تمت معالجة الرسالة لكن الرد غير مكتمل."
+    "connectionDropped": "انقطع الاتصال. تمت معالجة الرسالة لكن الرد غير مكتمل.",
+    "copy": "نسخ",
+    "copied": "تم النسخ",
+    "edit": "تعديل",
+    "cancel": "إلغاء",
+    "editingMessage": "تعديل الرسالة",
+    "copyFailed": "تعذر النسخ",
+    "editFailed": "تعذر تعديل الرسالة",
+    "messageCannotBeEdited": "لا يمكن تعديل الرسالة",
+    "retry": "إعادة المحاولة"
   },
   "profile": {
     "title": "الملف الشخصي",

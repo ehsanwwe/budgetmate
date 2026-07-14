@@ -419,7 +419,16 @@
     "recordStopped": "Aufnahme gestoppt — Senden oder Abbrechen?",
     "pressToRecord": "Schaltfläche drücken zum Starten",
     "inputPlaceholder": "Fragen Sie mich etwas...",
-    "connectionDropped": "Verbindung unterbrochen. Nachricht verarbeitet, Antwort unvollständig."
+    "connectionDropped": "Verbindung unterbrochen. Nachricht verarbeitet, Antwort unvollständig.",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "edit": "Bearbeiten",
+    "cancel": "Abbrechen",
+    "editingMessage": "Nachricht bearbeiten",
+    "copyFailed": "Kopieren fehlgeschlagen",
+    "editFailed": "Bearbeiten fehlgeschlagen",
+    "messageCannotBeEdited": "Nachricht kann nicht bearbeitet werden",
+    "retry": "Erneut versuchen"
   },
   "profile": {
     "title": "Profil",

@@ -8,14 +8,89 @@ import { useChatStore } from "@/store/chat";
 import type { Message } from "@/store/chat";
 import { useLocale } from "@/i18n/LocaleContext";
 import { t } from "@/i18n/getDictionary";
+import type { Dictionary } from "@/i18n/getDictionary";
 import { getDirection } from "@/i18n/config";
 import type { Locale } from "@/i18n/config";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp } from "lucide-react";
+import { Send, Bot, User, Trash2, Mic, MicOff, X, ArrowUp, Check, Copy, Pencil, RotateCcw } from "lucide-react";
 import ChatEmptyState from "@/components/chat/ChatEmptyState";
 
 const BAR_COUNT = 28;
+
+interface StreamResult {
+  text: string;
+  userMessageId?: number;
+  assistantMessageId?: number;
+}
+
+async function readChatStream(
+  response: Response,
+  onText: (text: string) => void,
+  onMetadata?: (userMessageId: number) => void,
+): Promise<StreamResult> {
+  if (!response.body) throw new Error("streaming failed");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let accumulated = "";
+  let userMessageId: number | undefined;
+  let assistantMessageId: number | undefined;
+
+  function processEvent(rawEvent: string) {
+    if (!rawEvent.trim()) return;
+    let eventType = "message";
+    const dataLines: string[] = [];
+    for (const line of rawEvent.split("\n")) {
+      if (line.startsWith("event:")) eventType = line.slice(6).trim();
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    const data = dataLines.join("\n").trim();
+    if (!data || data === "[DONE]") return;
+
+    const parsed = JSON.parse(data) as {
+      chunk?: string;
+      text?: string;
+      content?: string;
+      user_message_id?: number;
+      assistant_message_id?: number;
+    };
+    if (eventType === "error") throw new Error("generation failed");
+    if (eventType === "metadata") {
+      if (parsed.user_message_id) {
+        userMessageId = parsed.user_message_id;
+        onMetadata?.(parsed.user_message_id);
+      }
+      return;
+    }
+    if (eventType === "complete") {
+      accumulated = parsed.text || parsed.content || accumulated;
+      assistantMessageId = parsed.assistant_message_id;
+      onText(accumulated);
+      return;
+    }
+    const chunk = parsed.chunk || parsed.text || parsed.content || "";
+    if (chunk) {
+      accumulated += chunk;
+      onText(accumulated);
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      processEvent(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) processEvent(buffer);
+  return { text: accumulated, userMessageId, assistantMessageId };
+}
 
 function SimpleMarkdown({ text }: { text: string }) {
   const html = text
@@ -25,33 +100,195 @@ function SimpleMarkdown({ text }: { text: string }) {
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function MessageBubble({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+interface MessageBubbleProps {
+  message: Message;
+  dict: Dictionary;
+  dir: "rtl" | "ltr";
+  isStreaming?: boolean;
+  copied?: boolean;
+  isEditing?: boolean;
+  editDraft?: string;
+  editSubmitting?: boolean;
+  onCopy?: () => void;
+  onEdit?: () => void;
+  onEditDraftChange?: (value: string) => void;
+  onEditSend?: () => void;
+  onEditCancel?: () => void;
+  onRetry?: () => void;
+}
+
+function InlineMessageEditor({
+  value,
+  dir,
+  dict,
+  submitting,
+  onChange,
+  onSend,
+  onCancel,
+}: {
+  value: string;
+  dir: "rtl" | "ltr";
+  dict: Dictionary;
+  submitting: boolean;
+  onChange: (value: string) => void;
+  onSend: () => void;
+  onCancel: () => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 320)}px`;
+  }, [value]);
+
+  return (
+    <div
+      className="w-full min-w-[min(72vw,22rem)] rounded-2xl rounded-se-sm bg-[#2d1812] p-3 text-white"
+      aria-label={t(dict, "chat.editingMessage")}
+    >
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+        dir={dir}
+        rows={1}
+        disabled={submitting}
+        aria-label={t(dict, "chat.editingMessage")}
+        className="max-h-80 min-h-20 w-full resize-none overflow-y-auto rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-start text-sm leading-relaxed text-white outline-none focus:ring-2 focus:ring-white/30 disabled:opacity-70"
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={submitting}
+          className="rounded-full px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
+        >
+          {t(dict, "chat.cancel")}
+        </button>
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={!value.trim() || submitting}
+          className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#2d1812] transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {t(dict, "chat.send")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  dict,
+  dir,
+  isStreaming,
+  copied,
+  isEditing,
+  editDraft = "",
+  editSubmitting = false,
+  onCopy,
+  onEdit,
+  onEditDraftChange,
+  onEditSend,
+  onEditCancel,
+  onRetry,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const avatar = (
+    <Avatar className="h-7 w-7 shrink-0">
+      <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
+        {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+      </AvatarFallback>
+    </Avatar>
+  );
+
   return (
       <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
-          dir="ltr"
+          className="flex w-full"
+          dir={dir}
       >
-        <div className={`flex max-w-[86%] gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-          <Avatar className="h-7 w-7 shrink-0">
-            <AvatarFallback className={isUser ? "bg-[#2d1812] text-white" : "bg-emerald-100 text-emerald-700"}>
-              {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-            </AvatarFallback>
-          </Avatar>
-          <div
-              dir="rtl"
-              className={`rounded-2xl px-4 py-2.5 text-right text-sm leading-relaxed ${
-                  isUser
-                      ? "bg-[#2d1812] text-white rounded-tr-sm"
-                      : "bg-white text-[#2d1812] rounded-tl-sm shadow-sm border border-gray-100"
-              }`}
-          >
-            <SimpleMarkdown text={message.content} />
-            {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-current animate-pulse ms-0.5 align-text-bottom" />}
+        <div className={`flex max-w-[86%] items-start gap-2 ${isUser ? "ms-auto" : "me-auto"}`}>
+          {!isUser && avatar}
+          <div className="min-w-0">
+            {isEditing ? (
+              <InlineMessageEditor
+                value={editDraft}
+                dir={dir}
+                dict={dict}
+                submitting={editSubmitting}
+                onChange={onEditDraftChange!}
+                onSend={onEditSend!}
+                onCancel={onEditCancel!}
+              />
+            ) : (
+              <div
+                  dir={dir}
+                  className={`whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-start text-sm leading-relaxed ${
+                      isUser
+                          ? "rounded-se-sm bg-[#2d1812] text-white"
+                          : "rounded-ss-sm border border-gray-100 bg-white text-[#2d1812] shadow-sm"
+                  }`}
+              >
+                <SimpleMarkdown text={message.content} />
+                {isStreaming && <span className="ms-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-current align-text-bottom" />}
+              </div>
+            )}
+            {!isStreaming && !isEditing && (
+              <div className={`flex min-h-7 items-center gap-1 pt-1 ${isUser ? "justify-end" : "justify-start"}`}>
+                <button
+                  type="button"
+                  onClick={onCopy}
+                  aria-label={copied ? t(dict, "chat.copied") : t(dict, "chat.copy")}
+                  title={copied ? t(dict, "chat.copied") : t(dict, "chat.copy")}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied && <span>{t(dict, "chat.copied")}</span>}
+                </button>
+                {isUser && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    disabled={!message.id || editSubmitting}
+                    aria-label={t(dict, "chat.edit")}
+                    title={t(dict, "chat.edit")}
+                    className="inline-flex min-h-8 items-center rounded-md px-2 text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {onRetry && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>{t(dict, "chat.retry")}</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
+          {isUser && avatar}
         </div>
       </motion.div>
   );
@@ -88,6 +325,8 @@ export default function ChatPage() {
     historyUserId,
     setMessages,
     addMessage,
+    updateMessageId,
+    editMessageAndTruncate,
     setStreaming,
     setStreamingText,
     setLoading,
@@ -105,6 +344,11 @@ export default function ChatPage() {
   const [waveformBars, setWaveformBars] = useState<number[]>(Array(BAR_COUNT).fill(0.15));
   const [sendingVoice, setSendingVoice] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [copiedMessageKey, setCopiedMessageKey] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [retryEdit, setRetryEdit] = useState<{ messageId: number; content: string } | null>(null);
 
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -120,8 +364,11 @@ export default function ChatPage() {
   // Synchronous guard against double-submit (React state updates are async,
   // so checking `streaming` alone is not enough for rapid double presses).
   const sendingRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks whether we have already done the one-time scroll restore this mount
   const skipNextAutoScrollRef = useRef(false);
+  const shouldAutoScrollRef = useRef(true);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -147,7 +394,8 @@ export default function ChatPage() {
 
         if (histRes.status === "fulfilled") {
           const rows = histRes.value.data.messages || [];
-          const hist: Message[] = rows.slice().reverse().map((m: { role: string; content: string }) => ({
+          const hist: Message[] = rows.slice().reverse().map((m: { id: number; role: string; content: string }) => ({
+            id: m.id,
             role: m.role as "user" | "assistant",
             content: m.content,
           }));
@@ -188,7 +436,7 @@ export default function ChatPage() {
       skipNextAutoScrollRef.current = false;
       return;
     }
-    scrollToBottom();
+    if (shouldAutoScrollRef.current) scrollToBottom();
   }, [messages, streamingText, scrollToBottom]);
 
   // Save scroll position when navigating away
@@ -206,6 +454,7 @@ export default function ChatPage() {
       stopRecording(false);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     };
   }, []);
 
@@ -213,9 +462,12 @@ export default function ChatPage() {
     const userMsg = (text || input).trim();
     if (!userMsg || streaming || sendingRef.current) return;
     sendingRef.current = true;
+    shouldAutoScrollRef.current = true;
 
     // Generate idempotency key — same key reused on stream + fallback POST.
     const clientMsgId = crypto.randomUUID();
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
 
     setInput("");
     addMessage({ role: "user", content: userMsg, localId: clientMsgId });
@@ -223,76 +475,182 @@ export default function ChatPage() {
     setStreamingText("");
 
     let backendResponded = false;
-    let accumulated = "";
+    let backendAcknowledged = false;
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
       const streamUrl = `${apiBase}/chat/stream?content=${encodeURIComponent(userMsg)}&client_message_id=${encodeURIComponent(clientMsgId)}`;
       const res = await fetch(streamUrl, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
 
-      if (!res.ok || !res.body) throw new Error("streaming failed");
+      if (!res.ok) throw new Error("streaming failed");
+      const result = await readChatStream(
+        res,
+        (value) => {
+          backendResponded = true;
+          setStreamingText(value);
+        },
+        (userMessageId) => {
+          backendAcknowledged = true;
+          updateMessageId(clientMsgId, userMessageId);
+        },
+      );
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let currentEventType = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("event: ")) {
-            currentEventType = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") { currentEventType = ""; continue; }
-            try {
-              const parsed = JSON.parse(data);
-              if (currentEventType === "complete") {
-                accumulated = parsed.text || parsed.content || accumulated;
-                setStreamingText(accumulated);
-              } else {
-                const chunkText = parsed.chunk || parsed.text || parsed.content || "";
-                if (chunkText) {
-                  backendResponded = true;
-                  accumulated += chunkText;
-                  setStreamingText(accumulated);
-                }
-              }
-            } catch {
-              if (currentEventType !== "complete") {
-                accumulated += data;
-                setStreamingText(accumulated);
-              }
-            }
-            currentEventType = "";
-          }
-        }
+      if (result.text) {
+        addMessage({
+          id: result.assistantMessageId,
+          role: "assistant",
+          content: result.text,
+          localId: `assistant-${clientMsgId}`,
+        });
       }
-
-      if (accumulated) addMessage({ role: "assistant", content: accumulated });
     } catch {
-      if (!backendResponded) {
+      if (controller.signal.aborted) return;
+      if (!backendResponded && !backendAcknowledged) {
         try {
           const res = await api.post("/chat/message", { content: userMsg, client_message_id: clientMsgId });
-          addMessage({ role: "assistant", content: res.data.reply || t(dict, "chat.fallback") });
+          if (res.data.user_message_id) updateMessageId(clientMsgId, res.data.user_message_id);
+          addMessage({
+            id: res.data.assistant_message_id,
+            role: "assistant",
+            content: res.data.reply || t(dict, "chat.fallback"),
+            localId: `assistant-${clientMsgId}`,
+          });
         } catch {
           toast.error(t(dict, "chat.errorSend"));
-          addMessage({ role: "assistant", content: t(dict, "chat.retryMessage") });
+          addMessage({ role: "assistant", content: t(dict, "chat.retryMessage"), localId: `send-error-${clientMsgId}` });
         }
       } else {
-        if (accumulated) {
-          addMessage({ role: "assistant", content: accumulated });
-        } else {
-          toast.error(t(dict, "chat.connectionDropped"));
-        }
+        toast.error(t(dict, "chat.connectionDropped"));
       }
     } finally {
       setStreaming(false);
       setStreamingText("");
       sendingRef.current = false;
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+    }
+  }
+
+  function messageKey(message: Message): string {
+    return message.id ? `message-${message.id}` : `local-${message.localId}`;
+  }
+
+  async function copyMessage(message: Message) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message.content);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = message.content;
+        textarea.style.position = "fixed";
+        textarea.style.insetInlineStart = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("copy failed");
+      }
+      setCopiedMessageKey(messageKey(message));
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedMessageKey(null), 1800);
+    } catch {
+      toast.error(t(dict, "chat.copyFailed"));
+    }
+  }
+
+  function beginEditing(message: Message) {
+    if (!message.id || message.role !== "user") {
+      toast.error(t(dict, "chat.messageCannotBeEdited"));
+      return;
+    }
+    streamAbortRef.current?.abort();
+    setRetryEdit(null);
+    setEditingMessageId(message.id);
+    setEditDraft(message.content);
+  }
+
+  function cancelEditing() {
+    if (editSubmitting) return;
+    setEditingMessageId(null);
+    setEditDraft("");
+  }
+
+  async function submitEditedMessage(
+    messageId = editingMessageId,
+    content = editDraft,
+  ) {
+    if (!messageId || !content.trim() || editSubmitting || sendingRef.current) return;
+
+    streamAbortRef.current?.abort();
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    const clientMessageId = crypto.randomUUID();
+    let backendAcknowledged = false;
+    let cannotEdit = false;
+
+    sendingRef.current = true;
+    setEditSubmitting(true);
+    setRetryEdit(null);
+    setStreamingText("");
+
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+      const response = await fetch(`${apiBase}/chat/messages/${messageId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept-Language": locale,
+        },
+        body: JSON.stringify({ content, client_message_id: clientMessageId }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        if (response.status === 422) {
+          cannotEdit = true;
+          toast.error(t(dict, "chat.messageCannotBeEdited"));
+        }
+        throw new Error(`edit failed: ${response.status}`);
+      }
+
+      backendAcknowledged = true;
+      editMessageAndTruncate(messageId, content);
+      setEditingMessageId(null);
+      setEditDraft("");
+      setStreaming(true);
+
+      const result = await readChatStream(response, setStreamingText);
+      if (result.text) {
+        addMessage({
+          id: result.assistantMessageId,
+          role: "assistant",
+          content: result.text,
+          localId: `assistant-edit-${clientMessageId}`,
+        });
+      }
+    } catch {
+      if (controller.signal.aborted) return;
+      if (backendAcknowledged) {
+        setRetryEdit({ messageId, content });
+        addMessage({
+          role: "assistant",
+          content: t(dict, "chat.retryMessage"),
+          localId: `edit-error-${clientMessageId}`,
+        });
+      } else if (!cannotEdit) {
+        toast.error(t(dict, "chat.editFailed"));
+      }
+    } finally {
+      if (backendAcknowledged) {
+        setStreaming(false);
+        setStreamingText("");
+      }
+      setEditSubmitting(false);
+      sendingRef.current = false;
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
     }
   }
 
@@ -390,8 +748,9 @@ export default function ChatPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const { transcript, reply } = res.data;
-      if (transcript) addMessage({ role: "user", content: `🎤 ${transcript}` });
-      if (reply) addMessage({ role: "assistant", content: reply });
+      const voiceLocalId = crypto.randomUUID();
+      if (transcript) addMessage({ id: res.data.user_message_id, role: "user", content: `🎤 ${transcript}`, localId: `voice-user-${voiceLocalId}` });
+      if (reply) addMessage({ id: res.data.message_id, role: "assistant", content: reply, localId: `voice-assistant-${voiceLocalId}` });
       cancelVoice();
     } catch {
       toast.error(t(dict, "chat.voiceError"));
@@ -412,6 +771,9 @@ export default function ChatPage() {
     try {
       await api.delete("/chat/history");
       setMessages([]);
+      setEditingMessageId(null);
+      setEditDraft("");
+      setRetryEdit(null);
       toast.success(t(dict, "chat.historyCleared"));
     } catch {
       toast.error(t(dict, "chat.historyClearError"));
@@ -476,6 +838,8 @@ export default function ChatPage() {
           <button
               onClick={clearHistory}
               disabled={clearingHistory}
+              aria-label={t(dict, "chat.clearHistory")}
+              title={t(dict, "chat.clearHistory")}
               className="p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Trash2 className="h-4 w-4 text-gray-400" />
@@ -485,21 +849,48 @@ export default function ChatPage() {
         {/* Messages */}
         <div
             ref={messagesContainerRef}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              shouldAutoScrollRef.current =
+                element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+            }}
             className="min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f5f1eb]/40"
         >
-          {messages.map((msg, i) => (
-              <MessageBubble key={msg.localId || msg.id || i} message={msg} />
+          {messages.map((msg) => (
+              <MessageBubble
+                key={messageKey(msg)}
+                message={msg}
+                dict={dict}
+                dir={dir}
+                copied={copiedMessageKey === messageKey(msg)}
+                isEditing={msg.id === editingMessageId}
+                editDraft={editDraft}
+                editSubmitting={editSubmitting || streaming}
+                onCopy={() => copyMessage(msg)}
+                onEdit={() => beginEditing(msg)}
+                onEditDraftChange={setEditDraft}
+                onEditSend={() => submitEditedMessage()}
+                onEditCancel={cancelEditing}
+                onRetry={retryEdit && msg.localId?.startsWith("edit-error-")
+                  ? () => submitEditedMessage(retryEdit.messageId, retryEdit.content)
+                  : undefined}
+              />
           ))}
           {streaming && streamingText && (
-              <MessageBubble message={{ role: "assistant", content: streamingText }} isStreaming />
+              <MessageBubble
+                message={{ role: "assistant", content: streamingText, localId: "streaming-assistant" }}
+                dict={dict}
+                dir={dir}
+                isStreaming
+              />
           )}
           {streaming && !streamingText && (
-              <div className="flex w-full justify-start" dir="ltr">
-                <div className="flex gap-2">
+              <div className="flex w-full" dir={dir} aria-label={t(dict, "chat.thinking")}>
+                <div className="me-auto flex gap-2">
                   <Avatar className="h-7 w-7 shrink-0">
                     <AvatarFallback className="bg-emerald-100 text-emerald-700"><Bot className="h-3.5 w-3.5" /></AvatarFallback>
                   </Avatar>
-                  <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-1 rounded-2xl rounded-ss-sm border border-gray-100 bg-white px-4 py-2.5 shadow-sm">
                     {[0, 150, 300].map((d) => (
                         <span key={d} className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
                     ))}

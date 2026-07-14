@@ -419,7 +419,16 @@
     "recordStopped": "ضبط متوقف شد — ارسال یا لغو؟",
     "pressToRecord": "روی دکمه بزن تا ضبط شروع شه",
     "inputPlaceholder": "از من بپرس...",
-    "connectionDropped": "اتصال قطع شد. پیام پردازش شد اما پاسخ ناقص است."
+    "connectionDropped": "اتصال قطع شد. پیام پردازش شد اما پاسخ ناقص است.",
+    "copy": "کپی",
+    "copied": "کپی شد",
+    "edit": "ویرایش",
+    "cancel": "لغو",
+    "editingMessage": "ویرایش پیام",
+    "copyFailed": "کپی انجام نشد",
+    "editFailed": "ویرایش پیام انجام نشد",
+    "messageCannotBeEdited": "این پیام قابل ویرایش نیست",
+    "retry": "تلاش دوباره"
   },
   "profile": {
     "title": "پروفایل",
