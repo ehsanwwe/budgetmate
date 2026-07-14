@@ -1,4 +1,5 @@
 from datetime import datetime
+from _thread import LockType
 import json
 import logging
 import threading
@@ -26,13 +27,16 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 orchestrator = AgentOrchestrator()
 logger = logging.getLogger(__name__)
 
-_generation_locks: dict[int, threading.Lock] = {}
+
+
+_generation_locks: dict[int, LockType] = {}
 _generation_locks_guard = threading.Lock()
 
 
-def _try_acquire_generation(user_id: int) -> threading.Lock | None:
+def _try_acquire_generation(user_id: int) -> LockType | None:
     with _generation_locks_guard:
         lock = _generation_locks.setdefault(user_id, threading.Lock())
+
     return lock if lock.acquire(blocking=False) else None
 
 
@@ -68,7 +72,7 @@ def _stream_assistant_response(
     history: list[dict],
     user_message_id: int,
     client_message_id: str | None,
-    generation_lock: threading.Lock,
+    generation_lock: LockType,
 ):
     async def event_generator():
         try:
