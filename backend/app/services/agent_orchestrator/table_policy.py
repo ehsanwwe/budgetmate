@@ -19,7 +19,12 @@ POLICIES: dict[str, TablePolicy] = {
         business_name="current user's income and expense transactions",
         allowed_select=True,
         allowed_insert=True,
-        allowed_delete=True,
+        # Transaction deletion via LLM chat has been removed. Users must
+        # delete through the transaction-management UI, which calls the
+        # user-scoped REST endpoint. Internal edit-rollback also deletes
+        # transactions deterministically, but does so through a dedicated
+        # service — not through the LLM's SQL tool surface.
+        allowed_delete=False,
         user_scoped=True,
         user_id_column="user_id",
         selectable_columns={

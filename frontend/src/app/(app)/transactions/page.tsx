@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MoneyInput } from "@/components/money-input";
-import { Plus, Trash2, Search, Loader2 } from "lucide-react";
+import { Plus, Trash2, Search, Loader2, Pencil } from "lucide-react";
 import { JalaliDateInput } from "@/components/ui/jalali-date-input";
 
 const txSchema = z.object({
@@ -46,12 +46,18 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const { control, register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<TxForm>({
+  const createForm = useForm<TxForm>({
+    resolver: zodResolver(txSchema),
+    defaultValues: { date: new Date().toISOString().split("T")[0] },
+  });
+
+  const editForm = useForm<TxForm>({
     resolver: zodResolver(txSchema),
     defaultValues: { date: new Date().toISOString().split("T")[0] },
   });
@@ -81,15 +87,38 @@ export default function TransactionsPage() {
     });
   }, [load]);
 
-  async function onSubmit(data: TxForm) {
+  async function onCreate(data: TxForm) {
     try {
       await api.post("/transactions", data);
       toast.success(t(dict, "transactions.addSuccess"));
       setOpen(false);
-      reset({ date: new Date().toISOString().split("T")[0] });
+      createForm.reset({ date: new Date().toISOString().split("T")[0] });
       load();
     } catch {
       toast.error(t(dict, "transactions.addError"));
+    }
+  }
+
+  function openEdit(tx: Transaction) {
+    editForm.reset({
+      amount: tx.amount,
+      type: (tx.type === "income" ? "income" : "expense") as "income" | "expense",
+      category_id: tx.category_id,
+      description: tx.description || "",
+      date: tx.date,
+    });
+    setEditing(tx);
+  }
+
+  async function onEdit(data: TxForm) {
+    if (!editing) return;
+    try {
+      await api.patch(`/transactions/${editing.id}`, data);
+      toast.success(t(dict, "transactions.editSuccess"));
+      setEditing(null);
+      load();
+    } catch {
+      toast.error(t(dict, "transactions.editError"));
     }
   }
 
@@ -121,50 +150,50 @@ export default function TransactionsPage() {
             <DialogHeader>
               <DialogTitle>{t(dict, "transactions.newTransactionTitle")}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+            <form onSubmit={createForm.handleSubmit(onCreate)} className="space-y-4 mt-2">
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.typeLabel")}</Label>
-                <select {...register("type")} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <select {...createForm.register("type")} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="">{t(dict, "transactions.selectType")}</option>
                   <option value="expense">{t(dict, "transactions.expense")}</option>
                   <option value="income">{t(dict, "transactions.income")}</option>
                 </select>
-                {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
+                {createForm.formState.errors.type && <p className="text-xs text-destructive">{createForm.formState.errors.type.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.categoryLabel")}</Label>
-                <select {...register("category_id", { valueAsNumber: true })} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <select {...createForm.register("category_id", { valueAsNumber: true })} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="">{t(dict, "transactions.selectCategory")}</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                {errors.category_id && <p className="text-xs text-destructive">{errors.category_id.message}</p>}
+                {createForm.formState.errors.category_id && <p className="text-xs text-destructive">{createForm.formState.errors.category_id.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.amountLabel")}</Label>
                 <Controller
                   name="amount"
-                  control={control}
+                  control={createForm.control}
                   render={({ field }) => (
                     <MoneyInput
                       value={field.value}
                       onChange={field.onChange}
                       placeholder={t(dict, "transactions.amountEx")}
-                      error={!!errors.amount}
+                      error={!!createForm.formState.errors.amount}
                     />
                   )}
                 />
-                {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+                {createForm.formState.errors.amount && <p className="text-xs text-destructive">{createForm.formState.errors.amount.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.descLabel")}</Label>
-                <Input {...register("description")} placeholder={t(dict, "transactions.descPlaceholder")} />
-                {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
+                <Input {...createForm.register("description")} placeholder={t(dict, "transactions.descPlaceholder")} />
+                {createForm.formState.errors.description && <p className="text-xs text-destructive">{createForm.formState.errors.description.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>{t(dict, "transactions.dateLabel")}</Label>
                 <Controller
                   name="date"
-                  control={control}
+                  control={createForm.control}
                   render={({ field }) => (
                     <JalaliDateInput
                       value={field.value ?? ""}
@@ -173,16 +202,95 @@ export default function TransactionsPage() {
                     />
                   )}
                 />
-                {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
+                {createForm.formState.errors.date && <p className="text-xs text-destructive">{createForm.formState.errors.date.message}</p>}
               </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Button type="submit" className="w-full" disabled={createForm.formState.isSubmitting}>
+                {createForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t(dict, "transactions.submitBtn")}
               </Button>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editing} onOpenChange={(v) => { if (!v) setEditing(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t(dict, "transactions.editTitle")}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={editForm.handleSubmit(onEdit)} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>{t(dict, "transactions.typeLabel")}</Label>
+              <select {...editForm.register("type")} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">{t(dict, "transactions.selectType")}</option>
+                <option value="expense">{t(dict, "transactions.expense")}</option>
+                <option value="income">{t(dict, "transactions.income")}</option>
+              </select>
+              {editForm.formState.errors.type && <p className="text-xs text-destructive">{editForm.formState.errors.type.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t(dict, "transactions.categoryLabel")}</Label>
+              <select {...editForm.register("category_id", { valueAsNumber: true })} className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">{t(dict, "transactions.selectCategory")}</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {editForm.formState.errors.category_id && <p className="text-xs text-destructive">{editForm.formState.errors.category_id.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t(dict, "transactions.amountLabel")}</Label>
+              <Controller
+                name="amount"
+                control={editForm.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder={t(dict, "transactions.amountEx")}
+                    error={!!editForm.formState.errors.amount}
+                  />
+                )}
+              />
+              {editForm.formState.errors.amount && <p className="text-xs text-destructive">{editForm.formState.errors.amount.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t(dict, "transactions.descLabel")}</Label>
+              <Input {...editForm.register("description")} placeholder={t(dict, "transactions.descPlaceholder")} />
+              {editForm.formState.errors.description && <p className="text-xs text-destructive">{editForm.formState.errors.description.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t(dict, "transactions.dateLabel")}</Label>
+              <Controller
+                name="date"
+                control={editForm.control}
+                render={({ field }) => (
+                  <JalaliDateInput
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    locale={locale}
+                  />
+                )}
+              />
+              {editForm.formState.errors.date && <p className="text-xs text-destructive">{editForm.formState.errors.date.message}</p>}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setEditing(null)}
+                disabled={editForm.formState.isSubmitting}
+              >
+                {t(dict, "common.cancel")}
+              </Button>
+              <Button type="submit" className="flex-1" disabled={editForm.formState.isSubmitting}>
+                {editForm.formState.isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {t(dict, "transactions.saveEditBtn")}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <Card>
@@ -243,16 +351,27 @@ export default function TransactionsPage() {
                         {toman(tx.amount)}
                       </td>
                       <td className="px-4 py-3 text-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t(dict, "transactions.ariaDelete")}
-                          onClick={() => handleDelete(tx.id)}
-                          disabled={deleting === tx.id}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          {deleting === tx.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t(dict, "transactions.ariaEdit")}
+                            onClick={() => openEdit(tx)}
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t(dict, "transactions.ariaDelete")}
+                            onClick={() => handleDelete(tx.id)}
+                            disabled={deleting === tx.id}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            {deleting === tx.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

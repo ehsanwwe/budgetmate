@@ -314,9 +314,24 @@ class SqlExecutor:
                             f"refused ambiguous delete — {len(ambiguity)} candidates matched"
                         ),
                     )
+                # Capture rows before deletion so chat edit rollback can
+                # deterministically restore them if this delete belonged to a
+                # branch that gets superseded.
+                pre_delete_rows = self._snapshot_rows_for_delete(db, user, validation)
                 deleted_ids = self._execute_delete(db, user, validation)
                 summary = {"deleted_ids": deleted_ids, "deleted_count": len(deleted_ids)}
                 audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
+                if deleted_ids:
+                    self._record_operation_event(
+                        db,
+                        user.id,
+                        fingerprint,
+                        "delete",
+                        validation.table_name or "",
+                        deleted_ids[0],
+                        {"params": validation.params, "before_rows": pre_delete_rows},
+                        source_message_id=source_message_id,
+                    )
                 return AgentExecutionResult(
                     step_id=step.step_id,
                     operation_type=AgentOperationType.delete,
@@ -332,10 +347,22 @@ class SqlExecutor:
                 )
 
             if validation.operation_type == AgentOperationType.update:
+                # Snapshot the row's current values before applying the update
+                # so edit rollback can restore them.
+                before_snapshot = self._snapshot_row_for_update(db, user, validation)
                 updated_id = self._execute_update(db, user, validation)
                 summary = {"updated_id": updated_id}
                 audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
-                self._record_operation_event(db, user.id, fingerprint, "update", validation.table_name or "", updated_id, validation.params)
+                self._record_operation_event(
+                    db,
+                    user.id,
+                    fingerprint,
+                    "update",
+                    validation.table_name or "",
+                    updated_id,
+                    {"params": validation.params, "before": before_snapshot},
+                    source_message_id=source_message_id,
+                )
                 return AgentExecutionResult(
                     step_id=step.step_id,
                     operation_type=AgentOperationType.update,
@@ -349,7 +376,16 @@ class SqlExecutor:
             inserted_id = self._execute_insert(db, user, validation, source_message_id=source_message_id)
             summary = {"inserted_id": inserted_id}
             audit_operation(db, user.id, intent, step, "allowed", executed=True, result_summary=summary)
-            self._record_operation_event(db, user.id, fingerprint, "insert", validation.table_name or "", inserted_id, validation.params)
+            self._record_operation_event(
+                db,
+                user.id,
+                fingerprint,
+                "insert",
+                validation.table_name or "",
+                inserted_id,
+                {"params": validation.params},
+                source_message_id=source_message_id,
+            )
             return AgentExecutionResult(
                 step_id=step.step_id,
                 operation_type=AgentOperationType.insert,
@@ -378,7 +414,8 @@ class SqlExecutor:
         operation_type: str,
         table_name: str,
         target_id: int | None,
-        params: dict[str, Any],
+        payload: dict[str, Any],
+        source_message_id: int | None = None,
     ) -> None:
         if not fingerprint:
             return
@@ -390,12 +427,74 @@ class SqlExecutor:
                 table_name=table_name,
                 target_record_id=target_id,
                 status="executed",
-                payload_json=params,
+                payload_json=payload,
+                source_message_id=source_message_id,
             )
             db.add(event)
             db.commit()
         except Exception:
             db.rollback()
+
+    def _snapshot_row_for_update(
+        self, db: Session, user: User, validation: SqlValidationResult
+    ) -> dict[str, Any]:
+        """Read the row about to be updated so a rollback can restore it.
+
+        Only reads columns that are known via the table policy; the snapshot
+        is stored on the AgentOperationEvent and consumed by the chat edit
+        rollback service. Returns {} if the row cannot be resolved.
+        """
+        table = (validation.table_name or "").lower()
+        policy = get_policy(table)
+        if not policy:
+            return {}
+        try:
+            row_id = self._parse_update_row_id(validation.sql or "", validation.params)
+        except Exception:
+            return {}
+        cols = sorted(policy.selectable_columns)
+        if not cols:
+            return {}
+        select_sql = f"SELECT {', '.join(cols)} FROM {table} WHERE id = :__snap_id"
+        params: dict[str, Any] = {"__snap_id": row_id}
+        if policy.user_scoped and policy.user_id_column:
+            select_sql += f" AND {policy.user_id_column} = :__snap_user_id"
+            params["__snap_user_id"] = user.id
+        try:
+            row = db.execute(text(select_sql), params).mappings().first()
+        except Exception:
+            return {}
+        if not row:
+            return {}
+        return {key: self._json_value(value) for key, value in row.items()}
+
+    def _snapshot_rows_for_delete(
+        self, db: Session, user: User, validation: SqlValidationResult
+    ) -> list[dict[str, Any]]:
+        """Read all rows a DELETE is about to remove, scoped to the user."""
+        table = (validation.table_name or "").lower()
+        policy = get_policy(table)
+        if not policy:
+            return []
+        cols = sorted(policy.selectable_columns)
+        if not cols:
+            return []
+        base_where = self._extract_where(validation.sql or "")
+        if not base_where:
+            return []
+        scoped_where = base_where
+        params = dict(validation.params)
+        if policy.user_scoped and policy.user_id_column:
+            scoped_where = f"({base_where}) AND {policy.user_id_column} = :__snap_user_id"
+            params["__snap_user_id"] = user.id
+        select_sql = f"SELECT {', '.join(cols)} FROM {table} WHERE {scoped_where}"
+        try:
+            rows = db.execute(text(select_sql), params).mappings().all()
+        except Exception:
+            return []
+        return [
+            {key: self._json_value(value) for key, value in row.items()} for row in rows
+        ]
 
     def _check_semantic_goal_duplicate(self, db: Session, user: User, params: dict[str, Any]) -> int | None:
         """Return existing active goal id if a semantically identical goal already exists."""
@@ -709,7 +808,7 @@ class SqlExecutor:
         if table == "behavior_insights":
             return self._insert_behavior_insight(db, user, params)
         if table == "financial_facts":
-            return self._insert_fact(db, user, params)
+            return self._insert_fact(db, user, params, source_message_id=source_message_id)
         if table == "financial_warnings":
             return self._insert_warning(db, user, params)
         if table == "financial_decision_logs":
@@ -1007,7 +1106,13 @@ class SqlExecutor:
         )
         return int(row.id)
 
-    def _insert_fact(self, db: Session, user: User, params: dict[str, Any]) -> int:
+    def _insert_fact(
+        self,
+        db: Session,
+        user: User,
+        params: dict[str, Any],
+        source_message_id: int | None = None,
+    ) -> int:
         row = FinancialFact(
             user_id=user.id,
             fact_type=str(params.get("fact_type") or "user_profile")[:80],
@@ -1017,6 +1122,7 @@ class SqlExecutor:
             valid_from=parse_relative_date(params.get("valid_from")) if params.get("valid_from") else None,
             valid_to=parse_relative_date(params.get("valid_to")) if params.get("valid_to") else None,
             is_active=bool(params.get("is_active", True)),
+            source_message_id=source_message_id,
         )
         db.add(row)
         db.commit()

@@ -303,10 +303,14 @@
     "list": "لیست تراکنش‌ها",
     "addSuccess": "تراکنش افزوده شد",
     "deleteSuccess": "تراکنش حذف شد",
+    "editSuccess": "تراکنش به‌روزرسانی شد",
     "loadError": "خطا در بارگذاری تراکنش‌ها",
     "addError": "خطا در ثبت تراکنش",
     "deleteError": "خطا در حذف",
+    "editError": "خطا در به‌روزرسانی تراکنش",
+    "saveEditBtn": "ذخیره تغییرات",
     "ariaDelete": "حذف تراکنش",
+    "ariaEdit": "ویرایش تراکنش",
     "searchPlaceholder": "جستجو..."
   },
   "budgets": {

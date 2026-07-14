@@ -303,10 +303,14 @@
     "list": "قائمة المعاملات",
     "addSuccess": "تمت إضافة المعاملة",
     "deleteSuccess": "تم حذف المعاملة",
+    "editSuccess": "تم تحديث المعاملة",
     "loadError": "فشل تحميل المعاملات",
     "addError": "فشل إضافة المعاملة",
     "deleteError": "فشل الحذف",
+    "editError": "فشل تحديث المعاملة",
+    "saveEditBtn": "حفظ التغييرات",
     "ariaDelete": "حذف المعاملة",
+    "ariaEdit": "تعديل المعاملة",
     "searchPlaceholder": "بحث..."
   },
   "budgets": {

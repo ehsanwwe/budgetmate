@@ -14,6 +14,7 @@ from app.models.chat import ChatMessage, MessageRole
 from app.schemas.chat import ChatClearResponse, ChatMessageEdit, ChatMessageIn, ChatReply, ChatHistoryResponse, ChatMessageOut
 from app.services.billing import INSUFFICIENT_TOKENS_MESSAGE, consume_chat_tokens, ensure_wallet
 from app.services.chat_session_lifecycle import (
+    ChatEditRollbackFailedError,
     ChatMessageNotEditableError,
     ChatMessageNotFoundError,
     clear_chat_history_and_transient_state,
@@ -233,13 +234,22 @@ async def edit_message(
         result = edit_chat_message_and_truncate(
             db, current_user.id, message_id, body.content
         )
+        # Reject reuse of the client_message_id from the previous branch so
+        # the orchestrator's request_guard cache cannot replay the stale
+        # assistant response. A fresh cmid is derived per edit unless the
+        # caller supplies their own distinct one.
+        import hashlib as _hashlib
+        edit_client_message_id = body.client_message_id or (
+            f"edit:{result.message.id}:"
+            + _hashlib.sha256(body.content.encode()).hexdigest()[:16]
+        )
         generator = _stream_assistant_response(
             db=db,
             current_user=current_user,
             user_content=body.content,
             history=result.history,
             user_message_id=result.message.id,
-            client_message_id=body.client_message_id,
+            client_message_id=edit_client_message_id,
             generation_lock=generation_lock,
         )
     except ChatMessageNotFoundError:
@@ -248,6 +258,12 @@ async def edit_message(
     except ChatMessageNotEditableError:
         generation_lock.release()
         raise HTTPException(status_code=422, detail="Message cannot be edited")
+    except ChatEditRollbackFailedError as exc:
+        generation_lock.release()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Chat edit rollback failed: {exc}",
+        )
     except Exception:
         generation_lock.release()
         raise

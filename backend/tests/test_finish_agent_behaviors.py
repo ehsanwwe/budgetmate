@@ -144,12 +144,17 @@ def test_zero_match_delete_never_returns_success_message(db):
 
 
 def test_partial_delete_reports_honestly(db):
-    """Some delete steps hit rows, some miss → we do not blanket-say 'deleted'."""
-    tx = Transaction(user_id=1, amount=100_000, type=TransactionType.expense, description="x", date=date.today())
-    db.add(tx)
+    """Some delete steps hit rows, some miss → we do not blanket-say 'deleted'.
+
+    Uses future_commitments because transactions no longer support LLM
+    DELETE via chat. The composer's partial-delete reporting is a
+    table-agnostic contract.
+    """
+    fc = FutureCommitment(user_id=1, title="chek", amount=1_000_000)
+    db.add(fc)
     db.commit()
-    db.refresh(tx)
-    tx_id = tx.id
+    db.refresh(fc)
+    fc_id = fc.id
     plans = [
         AgentPlan(
             intent="delete_multi",
@@ -159,16 +164,16 @@ def test_partial_delete_reports_honestly(db):
                     step_id="d1",
                     operation_type=AgentOperationType.delete,
                     purpose="delete existing",
-                    table_name="transactions",
-                    sql="DELETE FROM transactions WHERE id = :id",
-                    params={"id": tx_id},
+                    table_name="future_commitments",
+                    sql="DELETE FROM future_commitments WHERE id = :id",
+                    params={"id": fc_id},
                 ),
                 AgentPlanStep(
                     step_id="d2",
                     operation_type=AgentOperationType.delete,
                     purpose="delete non-existent",
-                    table_name="transactions",
-                    sql="DELETE FROM transactions WHERE id = :id",
+                    table_name="future_commitments",
+                    sql="DELETE FROM future_commitments WHERE id = :id",
                     params={"id": 424_242},
                 ),
             ],
@@ -189,11 +194,11 @@ def test_partial_delete_reports_honestly(db):
 def test_multi_row_delete_success_reports_correct_count(db):
     ids = []
     for i in range(3):
-        tx = Transaction(user_id=1, amount=100_000 + i, type=TransactionType.expense, description=str(i), date=date.today())
-        db.add(tx)
+        fc = FutureCommitment(user_id=1, title=f"chek-{i}", amount=1_000_000 + i)
+        db.add(fc)
         db.commit()
-        db.refresh(tx)
-        ids.append(tx.id)
+        db.refresh(fc)
+        ids.append(fc.id)
     plans = [
         AgentPlan(
             intent="delete_multi",
@@ -203,8 +208,8 @@ def test_multi_row_delete_success_reports_correct_count(db):
                     step_id="d1",
                     operation_type=AgentOperationType.delete,
                     purpose="delete all three by id list",
-                    table_name="transactions",
-                    sql="DELETE FROM transactions WHERE id IN (:i1, :i2, :i3)",
+                    table_name="future_commitments",
+                    sql="DELETE FROM future_commitments WHERE id IN (:i1, :i2, :i3)",
                     params={"i1": ids[0], "i2": ids[1], "i3": ids[2]},
                 )
             ],
@@ -269,35 +274,28 @@ def test_transaction_created_via_chat_has_source_message_id(db):
 
 
 def test_current_chat_delete_scope_via_source_message_id(db):
-    # Two chat conversations for user 1: msg_a is "current", msg_b was
-    # created in a prior conversation. Prior conversation is simulated by
-    # explicitly setting source_message_id=NULL, matching what
-    # clear_chat_history_and_transient_state does.
+    """future_commitments still carries source_message_id; a chat-scoped
+    delete removes only rows created in the current conversation."""
     msg_a = _mk_user_msg(db, 1, "current chat message")
-    tx_from_current = Transaction(
-        user_id=1, amount=300_000, type=TransactionType.expense,
-        description="in-chat", date=date.today(), source_message_id=msg_a.id,
+    fc_from_current = FutureCommitment(
+        user_id=1, title="chek current", amount=300_000, source_message_id=msg_a.id,
     )
-    tx_from_prior_chat = Transaction(
-        user_id=1, amount=500_000, type=TransactionType.expense,
-        description="prior chat (cleared)", date=date.today(),
-        source_message_id=None,
+    fc_from_prior_chat = FutureCommitment(
+        user_id=1, title="chek prior", amount=500_000, source_message_id=None,
     )
-    tx_manual = Transaction(
-        user_id=1, amount=1_000_000, type=TransactionType.expense,
-        description="manual UI entry", date=date.today(),
-        source_message_id=None,
+    fc_manual = FutureCommitment(
+        user_id=1, title="chek manual", amount=1_000_000, source_message_id=None,
     )
-    db.add_all([tx_from_current, tx_from_prior_chat, tx_manual])
+    db.add_all([fc_from_current, fc_from_prior_chat, fc_manual])
     db.commit()
-    ids = (tx_from_current.id, tx_from_prior_chat.id, tx_manual.id)
+    ids = (fc_from_current.id, fc_from_prior_chat.id, fc_manual.id)
 
     step = AgentPlanStep(
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="delete everything created in this chat",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE source_message_id IS NOT NULL",
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE source_message_id IS NOT NULL",
         params={},
         bulk_scope=True,
     )
@@ -305,36 +303,34 @@ def test_current_chat_delete_scope_via_source_message_id(db):
     assert validation.allowed, validation.rejected_reason
     result = SqlExecutor().execute(db, user(db), step, validation, "delete_this_chat")
     assert result.deleted_row_count == 1
-    surviving_ids = {t.id for t in db.query(Transaction).filter(Transaction.user_id == 1).all()}
+    surviving_ids = {t.id for t in db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).all()}
     assert ids[0] not in surviving_ids
     assert ids[1] in surviving_ids
     assert ids[2] in surviving_ids
 
 
-def test_other_user_conversation_transactions_are_not_touched(db):
-    # user2 creates a chat message + transaction; user1 asks to clear own chat.
+def test_other_user_conversation_records_are_not_touched(db):
+    """User-scoping still holds for future_commitments deletion."""
     msg2 = _mk_user_msg(db, 2, "user 2 message")
-    tx2 = Transaction(
-        user_id=2, amount=999_999, type=TransactionType.expense,
-        description="user 2's", date=date.today(), source_message_id=msg2.id,
+    fc2 = FutureCommitment(
+        user_id=2, title="user2 chek", amount=999_999, source_message_id=msg2.id,
     )
-    db.add(tx2)
+    db.add(fc2)
     db.commit()
 
     step = AgentPlanStep(
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="delete this chat's records",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE source_message_id IS NOT NULL",
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE source_message_id IS NOT NULL",
         params={},
         bulk_scope=True,
     )
     validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
     SqlExecutor().execute(db, user(db, 1), step, validation, "delete_this_chat")
 
-    # user 2's transaction is untouched
-    assert db.query(Transaction).filter(Transaction.user_id == 2, Transaction.id == tx2.id).first() is not None
+    assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 2, FutureCommitment.id == fc2.id).first() is not None
 
 
 def test_chat_clear_detaches_provenance_from_prior_transactions(db):
@@ -354,11 +350,14 @@ def test_chat_clear_detaches_provenance_from_prior_transactions(db):
 # ── Objective 3: cancel + delete (semantic guidance test) ─────────────────────
 
 def test_mixed_cancel_and_delete_can_still_delete(db):
-    """When semantic result flags cancel_flow=false + bypass=true, the planner runs."""
-    tx = Transaction(user_id=1, amount=100_000, type=TransactionType.expense, description="x", date=date.today())
-    db.add(tx)
+    """When semantic result flags cancel_flow=false + bypass=true, the planner runs.
+
+    Uses future_commitments since transactions are no longer deletable from chat.
+    """
+    fc = FutureCommitment(user_id=1, title="chek to remove", amount=100_000)
+    db.add(fc)
     db.commit()
-    tx_id = tx.id
+    fc_id = fc.id
     plans = [
         AgentPlan(
             intent="delete_after_cancel_word",
@@ -368,17 +367,15 @@ def test_mixed_cancel_and_delete_can_still_delete(db):
                     step_id="d",
                     operation_type=AgentOperationType.delete,
                     purpose="delete despite cancel language",
-                    table_name="transactions",
-                    sql="DELETE FROM transactions WHERE id = :id",
-                    params={"id": tx_id},
+                    table_name="future_commitments",
+                    sql="DELETE FROM future_commitments WHERE id = :id",
+                    params={"id": fc_id},
                 )
             ],
         ),
         AgentPlan(intent="final", final_response_hint=""),
     ]
     orch = AgentOrchestrator(goal_intake_gate=_NULL_GATE, planner=SequencePlanner(plans))
-    # SemanticInterpreter is patched to return "other" (NOT cancel_flow) with
-    # bypass=true, matching the prompt guidance for mixed messages.
     with patch(
         "app.services.agent_orchestrator.orchestrator.SemanticInterpreter"
     ) as SemMock:
@@ -388,9 +385,9 @@ def test_mixed_cancel_and_delete_can_still_delete(db):
         semantic.should_cancel_pending_flow = False
         semantic.should_bypass_goal_intake = True
         instance.interpret = AsyncMock(return_value=semantic)
-        result = asyncio.run(orch.run(db, user(db), "ولش کن، این تراکنش رو پاک کن"))
+        result = asyncio.run(orch.run(db, user(db), "ولش کن، این تعهد رو پاک کن"))
 
-    assert db.query(Transaction).filter(Transaction.id == tx_id).first() is None
+    assert db.query(FutureCommitment).filter(FutureCommitment.id == fc_id).first() is None
 
 
 # ── Objective 4: uncertain / future-dated income guard ────────────────────────
@@ -519,32 +516,29 @@ def test_chat_clear_resets_reasoning_state(db):
 # ── Objective 6: ambiguity guard ──────────────────────────────────────────────
 
 def test_filter_delete_without_bulk_scope_is_refused_when_ambiguous(db):
-    # Two matching restaurant expenses; user says "delete the restaurant expense"
-    a = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="رستوران", date=date.today())
-    b = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="رستوران", date=date.today())
+    """Ambiguity guard still applies for future_commitments filter DELETE."""
+    a = FutureCommitment(user_id=1, title="chek a", amount=500_000)
+    b = FutureCommitment(user_id=1, title="chek b", amount=500_000)
     db.add_all([a, b])
     db.commit()
     step = AgentPlanStep(
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="singular delete without bulk_scope",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE amount = :amount AND date = :d",
-        params={"amount": 500_000, "d": date.today().isoformat()},
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE amount = :amount",
+        params={"amount": 500_000},
     )
     validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
     result = SqlExecutor().execute(db, user(db), step, validation, "ambiguous")
-    # Not executed; not rejected as malicious; candidates surfaced
     assert result.executed is False
     assert result.rejected_reason == "ambiguous_delete_requires_clarification"
     assert len(result.ambiguous_candidates) == 2
-    # Rows survive
-    assert db.query(Transaction).filter(Transaction.user_id == 1).count() == 2
+    assert db.query(FutureCommitment).filter(FutureCommitment.user_id == 1).count() == 2
 
 
 def test_filter_delete_with_single_match_allowed(db):
-    Transaction  # noqa — for readability
-    a = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="رستوران", date=date.today())
+    a = FutureCommitment(user_id=1, title="chek single", amount=500_000)
     db.add(a)
     db.commit()
     a_id = a.id
@@ -552,28 +546,28 @@ def test_filter_delete_with_single_match_allowed(db):
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="singular delete with single match",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE amount = :amount",
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE amount = :amount",
         params={"amount": 500_000},
     )
     validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
     result = SqlExecutor().execute(db, user(db), step, validation, "single")
     assert result.executed is True
     assert result.deleted_row_count == 1
-    assert db.query(Transaction).filter(Transaction.id == a_id).first() is None
+    assert db.query(FutureCommitment).filter(FutureCommitment.id == a_id).first() is None
 
 
 def test_bulk_scope_true_allows_multi_row_filter_delete(db):
-    a = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="a", date=date.today())
-    b = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="b", date=date.today())
+    a = FutureCommitment(user_id=1, title="chek a", amount=500_000)
+    b = FutureCommitment(user_id=1, title="chek b", amount=500_000)
     db.add_all([a, b])
     db.commit()
     step = AgentPlanStep(
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="explicit bulk delete",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE amount = :amount",
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE amount = :amount",
         params={"amount": 500_000},
         bulk_scope=True,
     )
@@ -584,25 +578,25 @@ def test_bulk_scope_true_allows_multi_row_filter_delete(db):
 
 
 def test_ambiguous_candidates_do_not_leak_other_user_data(db):
-    other = Transaction(user_id=2, amount=500_000, type=TransactionType.expense, description="other", date=date.today())
-    a = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="a", date=date.today())
-    b = Transaction(user_id=1, amount=500_000, type=TransactionType.expense, description="b", date=date.today())
+    other = FutureCommitment(user_id=2, title="other", amount=500_000)
+    a = FutureCommitment(user_id=1, title="a", amount=500_000)
+    b = FutureCommitment(user_id=1, title="b", amount=500_000)
     db.add_all([other, a, b])
     db.commit()
     step = AgentPlanStep(
         step_id="d",
         operation_type=AgentOperationType.delete,
         purpose="ambiguous",
-        table_name="transactions",
-        sql="DELETE FROM transactions WHERE amount = :amount",
+        table_name="future_commitments",
+        sql="DELETE FROM future_commitments WHERE amount = :amount",
         params={"amount": 500_000},
     )
     validation = SqlValidator().validate(step.operation_type, step.table_name, step.sql, step.params)
     result = SqlExecutor().execute(db, user(db, 1), step, validation, "amb")
     assert result.executed is False
     for c in result.ambiguous_candidates:
-        assert c.get("description") in {"a", "b"}
-        assert c.get("description") != "other"
+        assert c.get("title") in {"a", "b"}
+        assert c.get("title") != "other"
 
 
 # ── Objective 7: numeric consistency ──────────────────────────────────────────

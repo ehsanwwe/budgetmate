@@ -303,10 +303,14 @@
     "list": "交易列表",
     "addSuccess": "交易已添加",
     "deleteSuccess": "交易已删除",
+    "editSuccess": "交易已更新",
     "loadError": "交易加载失败",
     "addError": "添加交易失败",
     "deleteError": "删除失败",
+    "editError": "更新交易失败",
+    "saveEditBtn": "保存更改",
     "ariaDelete": "删除交易",
+    "ariaEdit": "编辑交易",
     "searchPlaceholder": "搜索..."
   },
   "budgets": {

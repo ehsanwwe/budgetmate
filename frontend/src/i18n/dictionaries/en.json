@@ -303,10 +303,14 @@
     "list": "Transaction List",
     "addSuccess": "Transaction added",
     "deleteSuccess": "Transaction deleted",
+    "editSuccess": "Transaction updated",
     "loadError": "Failed to load transactions",
     "addError": "Failed to add transaction",
     "deleteError": "Failed to delete",
+    "editError": "Failed to update transaction",
+    "saveEditBtn": "Save changes",
     "ariaDelete": "Delete transaction",
+    "ariaEdit": "Edit transaction",
     "searchPlaceholder": "Search..."
   },
   "budgets": {

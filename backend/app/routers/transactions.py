@@ -10,7 +10,13 @@ from app.models.user import User
 from app.models.budget import Budget
 from app.models.category import Category
 from app.models.transaction import Transaction, TransactionType
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionSummary, CategorySummary
+from app.schemas.transaction import (
+    CategorySummary,
+    TransactionCreate,
+    TransactionOut,
+    TransactionSummary,
+    TransactionUpdate,
+)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -175,6 +181,49 @@ def create_transaction(
         date=body.date or date.today(),
     )
     db.add(txn)
+    db.commit()
+    db.refresh(txn)
+    txn = db.query(Transaction).options(joinedload(Transaction.category)).filter(Transaction.id == txn.id).first()
+    return _serialize_transaction(txn)
+
+
+@router.patch("/{transaction_id}", response_model=TransactionOut)
+def update_transaction(
+    transaction_id: int,
+    body: TransactionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    txn = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.user_id == current_user.id,
+    ).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="تراکنش یافت نشد")
+
+    update_data = body.model_dump(exclude_unset=True)
+    if not update_data:
+        # Nothing to change — return current state so the client can refresh.
+        txn = db.query(Transaction).options(joinedload(Transaction.category)).filter(Transaction.id == txn.id).first()
+        return _serialize_transaction(txn)
+
+    if "category_id" in update_data:
+        new_category_id = update_data["category_id"]
+        if new_category_id is not None:
+            _get_allowed_category(new_category_id, current_user.id, db)
+        txn.category_id = new_category_id
+    if "amount" in update_data:
+        amount = update_data["amount"]
+        if amount is None or amount <= 0:
+            raise HTTPException(status_code=422, detail="مبلغ نامعتبر است")
+        txn.amount = amount
+    if "type" in update_data and update_data["type"] is not None:
+        txn.type = update_data["type"]
+    if "description" in update_data:
+        txn.description = update_data["description"]
+    if "date" in update_data and update_data["date"] is not None:
+        txn.date = update_data["date"]
+
     db.commit()
     db.refresh(txn)
     txn = db.query(Transaction).options(joinedload(Transaction.category)).filter(Transaction.id == txn.id).first()

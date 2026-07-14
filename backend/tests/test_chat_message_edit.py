@@ -12,7 +12,10 @@ from app.core.auth import get_current_user
 from app.db import Base, get_db
 from app.main import app
 from app.models import Category, ChatMessage, Transaction, User
+from app.models.agent_idempotency import AgentOperationEvent
 from app.models.chat import MessageRole
+from app.models.future_commitment import FutureCommitment
+from app.models.personal_cfo import FinancialFact
 from app.models.transaction import TransactionType
 from app.routers import chat as chat_router
 from app.services.agent_orchestrator.types import AgentFinalResponse
@@ -129,7 +132,9 @@ def test_edit_older_message_removes_multiple_later_pairs_and_keeps_prefix(db):
     assert result.history == [{"role": "assistant", "content": "preserved prefix"}]
 
 
-def test_edit_detaches_durable_records_from_removed_message(db):
+def test_edit_deletes_created_transactions_from_removed_branch(db):
+    """A transaction whose source_message_id belongs to a message in the
+    superseded branch is removed by the deterministic rollback path."""
     rows = _add_timeline(db, pair_count=2)
     later_user = rows[2]
     transaction = Transaction(
@@ -142,12 +147,153 @@ def test_edit_detaches_durable_records_from_removed_message(db):
     )
     db.add(transaction)
     db.commit()
+    tx_id = transaction.id
+
+    edit_result = edit_chat_message_and_truncate(db, 1, rows[0].id, "new branch")
+
+    assert db.query(Transaction).filter(Transaction.id == tx_id).first() is None
+    assert edit_result.rollback.deleted_transactions == 1
+
+
+def test_edit_preserves_manual_transactions_and_earlier_chat_transactions(db):
+    """Manual UI transactions (source_message_id IS NULL) and transactions
+    tied to messages BEFORE the target must survive rollback."""
+    rows = _add_timeline(db, pair_count=3)
+    manual_tx = Transaction(
+        user_id=1,
+        amount=999_000,
+        type=TransactionType.expense,
+        description="manual entry",
+        source_message_id=None,
+    )
+    earlier_tx = Transaction(
+        user_id=1,
+        amount=250_000,
+        type=TransactionType.expense,
+        description="earlier chat expense",
+        source_message_id=rows[0].id,  # earlier message than the target
+    )
+    later_tx = Transaction(
+        user_id=1,
+        amount=500_000,
+        type=TransactionType.expense,
+        description="later chat expense",
+        source_message_id=rows[4].id,  # later message than the target
+    )
+    db.add_all([manual_tx, earlier_tx, later_tx])
+    db.commit()
+    manual_id, earlier_id, later_id = manual_tx.id, earlier_tx.id, later_tx.id
+
+    # Target rows[2] — the second user message. rows[0] is BEFORE, rows[4] is AFTER.
+    edit_chat_message_and_truncate(db, 1, rows[2].id, "edited middle")
+
+    assert db.query(Transaction).filter(Transaction.id == manual_id).first() is not None
+    assert db.query(Transaction).filter(Transaction.id == earlier_id).first() is not None
+    assert db.query(Transaction).filter(Transaction.id == later_id).first() is None
+
+
+def test_edit_deletes_created_future_commitments_and_facts(db):
+    rows = _add_timeline(db, pair_count=2)
+    later_user = rows[2]
+    fc = FutureCommitment(
+        user_id=1,
+        title="later commitment",
+        amount=1_000_000,
+        source_message_id=later_user.id,
+    )
+    fact = FinancialFact(
+        user_id=1,
+        fact_type="chat_reasoning_state",
+        subject="reasoning",
+        value_json={"stated_balance": 1000000},
+        source_message_id=later_user.id,
+    )
+    db.add_all([fc, fact])
+    db.commit()
+    fc_id, fact_id = fc.id, fact.id
 
     edit_chat_message_and_truncate(db, 1, rows[0].id, "new branch")
 
-    db.refresh(transaction)
-    assert transaction.source_message_id is None
-    assert db.query(Transaction).filter(Transaction.id == transaction.id).count() == 1
+    assert db.query(FutureCommitment).filter(FutureCommitment.id == fc_id).first() is None
+    assert db.query(FinancialFact).filter(FinancialFact.id == fact_id).first() is None
+
+
+def test_edit_is_idempotent_on_repeated_submission(db):
+    """Submitting the same edit twice must not double-rollback or duplicate."""
+    rows = _add_timeline(db, pair_count=2)
+    later_user = rows[2]
+    transaction = Transaction(
+        user_id=1,
+        amount=100_000,
+        type=TransactionType.expense,
+        description="later branch expense",
+        source_message_id=later_user.id,
+    )
+    db.add(transaction)
+    db.commit()
+
+    edit_chat_message_and_truncate(db, 1, rows[0].id, "same content")
+    # Second call is deduplicated by the edit-guard fingerprint.
+    result_second = edit_chat_message_and_truncate(db, 1, rows[0].id, "same content")
+
+    assert result_second.duplicate_edit is True
+    # Row was removed by the first call; not resurrected by the second.
+    assert db.query(Transaction).filter(Transaction.description == "later branch expense").count() == 0
+    # Only one edit_guard event recorded.
+    guards = (
+        db.query(AgentOperationEvent)
+        .filter(AgentOperationEvent.user_id == 1)
+        .filter(AgentOperationEvent.operation_type == "chat_edit_guard")
+        .all()
+    )
+    assert len(guards) == 1
+
+
+def test_edit_restores_updated_row_from_before_state_snapshot(db):
+    """UPDATE operations recorded with a before-state snapshot get restored."""
+    from app.models.goal import Goal
+    rows = _add_timeline(db, pair_count=2)
+    goal = Goal(
+        user_id=1,
+        title="Trip to Kish",
+        target_amount=50_000_000,
+        current_amount=10_000_000,
+        status="active",
+        is_active=True,
+    )
+    db.add(goal)
+    db.commit()
+
+    # Simulate an LLM-driven UPDATE operation from the later branch: record
+    # the before-state event, then apply the update.
+    before_snapshot = {
+        "id": goal.id,
+        "target_amount": 50_000_000,
+        "current_amount": 10_000_000,
+        "status": "active",
+        "is_active": True,
+    }
+    goal.target_amount = 80_000_000  # user "raised the target" via chat
+    db.add(
+        AgentOperationEvent(
+            user_id=1,
+            operation_fingerprint="goal-update-fp",
+            operation_type="update",
+            table_name="goals",
+            target_record_id=goal.id,
+            status="executed",
+            payload_json={"params": {"target_amount": 80_000_000}, "before": before_snapshot},
+            source_message_id=rows[2].id,  # later branch message
+        )
+    )
+    db.commit()
+
+    edit_chat_message_and_truncate(db, 1, rows[0].id, "edited earlier")
+
+    restored = db.query(Goal).filter(Goal.id == goal.id).first()
+    assert restored is not None
+    assert restored.target_amount == 50_000_000
+    assert restored.current_amount == 10_000_000
 
 
 def test_edit_rejects_assistant_message(db):

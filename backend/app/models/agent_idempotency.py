@@ -24,6 +24,11 @@ class AgentOperationEvent(Base):
     target_record_id = Column(Integer, nullable=True)
     status = Column(String(30), nullable=False, default="executed")
     payload_json = Column(JSON, nullable=True)
+    # Chat provenance: id of the originating user chat message. Enables
+    # deterministic rollback of chat-triggered side effects when a prior
+    # user message is edited (chat_session_lifecycle uses this to restore
+    # before-state snapshots stored in payload_json["before"]).
+    source_message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     __table_args__ = (

@@ -303,10 +303,14 @@
     "list": "Transaktionsliste",
     "addSuccess": "Transaktion hinzugefügt",
     "deleteSuccess": "Transaktion gelöscht",
+    "editSuccess": "Transaktion aktualisiert",
     "loadError": "Transaktionen konnten nicht geladen werden",
     "addError": "Transaktion konnte nicht hinzugefügt werden",
     "deleteError": "Löschen fehlgeschlagen",
+    "editError": "Transaktion konnte nicht aktualisiert werden",
+    "saveEditBtn": "Änderungen speichern",
     "ariaDelete": "Transaktion löschen",
+    "ariaEdit": "Transaktion bearbeiten",
     "searchPlaceholder": "Suchen..."
   },
   "budgets": {
