@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MoneyInput } from "@/components/money-input";
 import { Plus, Trash2, Search, Loader2, Pencil } from "lucide-react";
@@ -135,17 +135,26 @@ export default function TransactionsPage() {
     }
   }
 
+  function openAddDialog() {
+    createForm.reset({ date: new Date().toISOString().split("T")[0] });
+    setOpen(true);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t(dict, "transactions.title")}</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4" />
-              {t(dict, "transactions.addNew")}
-            </Button>
-          </DialogTrigger>
+        <Dialog
+          open={open}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) createForm.reset({ date: new Date().toISOString().split("T")[0] });
+          }}
+        >
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            {t(dict, "transactions.addNew")}
+          </Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{t(dict, "transactions.newTransactionTitle")}</DialogTitle>
