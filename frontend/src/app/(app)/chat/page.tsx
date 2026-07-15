@@ -840,9 +840,12 @@ export default function ChatPage() {
               disabled={clearingHistory}
               aria-label={t(dict, "chat.clearHistory")}
               title={t(dict, "chat.clearHistory")}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Trash2 className="h-4 w-4 text-gray-400" />
+            <span className="text-xs font-medium text-gray-500">
+              {t(dict, "chat.clearHistory")}
+            </span>
           </button>
         </div>
 

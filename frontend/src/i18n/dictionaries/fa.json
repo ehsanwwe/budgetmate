@@ -401,7 +401,7 @@
     "send": "ارسال",
     "thinking": "در حال فکر کردن...",
     "greeting": "سلام {name}! چطور می‌تونم کمکت کنم؟",
-    "clearHistory": "پاک کردن تاریخچه",
+    "clearHistory": "حذف گفتگو",
     "noMessages": "هنوز پیامی رد و بدل نشده",
     "voice": "ارسال صوتی",
     "suggestions": {
